@@ -97,11 +97,16 @@ def resolve_runtime_settings(args: argparse.Namespace) -> dict[str, Any]:
         },
         cfg,
     )
-    merged.setdefault("button_index", 1)
-    merged.setdefault("button_text", "")
-    merged.setdefault("search_timeout", 20.0)
-    merged.setdefault("download_timeout", 30.0)
-    merged.setdefault("poll_interval", 1.0)
+    if not merged.get("button_index"):
+        merged["button_index"] = 1
+    if not merged.get("button_text"):
+        merged["button_text"] = ""
+    if not merged.get("search_timeout"):
+        merged["search_timeout"] = 20.0
+    if not merged.get("download_timeout"):
+        merged["download_timeout"] = 30.0
+    if not merged.get("poll_interval"):
+        merged["poll_interval"] = 1.0
 
     has_creds = bool(merged.get("api_id") and merged.get("api_hash") and (merged.get("session_string") or merged.get("session_name")))
     missing = [name for name in ("bot", "query", "download_dir") if not merged.get(name)]
@@ -122,7 +127,7 @@ def build_request(settings: dict[str, Any]) -> ProviderRunRequest:
         session_string=str(settings.get("session_string") or ""),
         session_name=str(settings.get("session_name") or ""),
         button_index=int(settings["button_index"]),
-        button_text=str(settings["button_text"]),
+        button_text=str(settings.get("button_text") or ""),
         search_timeout=float(settings["search_timeout"]),
         download_timeout=float(settings["download_timeout"]),
         poll_interval=float(settings["poll_interval"]),

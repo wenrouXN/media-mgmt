@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+
+# Local runtime config / credentials
+config.json
+.credentials/
+.env
+*.session
+*.session-journal
+downloads/

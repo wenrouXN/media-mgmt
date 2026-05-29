@@ -1,0 +1,27 @@
+{
+  "pansou": {
+    "url": "http://127.0.0.1:805"
+  },
+  "moviepilot": {
+    "base_url": "http://127.0.0.1:3002",
+    "api_key": "replace-with-your-moviepilot-api-key",
+    "mcporter_server": "moviepilot"
+  },
+  "hdhive": {
+    "cloak_url": "http://127.0.0.1:8080",
+    "profile_name": "mdmgmt",
+    "profile_id": ""
+  },
+  "telegram_music": {
+    "api_id": 123456,
+    "api_hash": "replace-with-your-telegram-api-hash",
+    "session_string": "replace-with-your-telegram-session-string",
+    "session_name": "",
+    "bot": "@music_v1bot",
+    "download_dir": "./downloads/music",
+    "button_index": 1,
+    "search_timeout": 20,
+    "download_timeout": 30,
+    "poll_interval": 1
+  }
+}

@@ -18,7 +18,7 @@ Skill for private media workflows: 115 resource search, MoviePilot transfer, HDH
 
 - Python 3.11+
 - Python packages: `websockets`, `telethon`, `python-dotenv`
-- Optional but recommended: `mcporter` + a configured `moviepilot` MCP server for MoviePilot search/subscription helpers
+- MoviePilot REST API for media recognition, search, subscriptions, download paths, and downloads
 - Service accounts/access for whichever providers you enable:
   - Search service exposing `POST /api/search`
   - MoviePilot with `P115StrmHelper`
@@ -38,7 +38,7 @@ This skill is glue code that orchestrates several backends and open-source tools
 | 115 cloud drive | Share-link source and transfer target | Valid 115 share links; account/plugin capability configured on the MoviePilot side | via MoviePilot |
 | MoviePilot | Media recognition, subscription, plugin host | Reachable MoviePilot service with API key | `moviepilot.base_url`, `moviepilot.api_key` |
 | MoviePilot P115StrmHelper | Transfer 115 shares | Plugin installed/enabled; 115 account configured inside the plugin | `moviepilot.*` |
-| mcporter / MCP | MoviePilot search/recognition/subscription helper commands | mcporter configured with a `moviepilot` MCP server | `moviepilot.mcporter_server` |
+| MoviePilot REST API | Media recognition, search, subscription, download path, and download helpers | Reachable MoviePilot service with API key | `moviepilot.base_url`, `moviepilot.api_key` |
 | CloakManager / CloakBrowser | CDP-controllable browser profile manager | Reachable CloakManager service; launchable profile; proxy configured if needed | `hdhive.cloak_url`, `hdhive.profile_name`, `hdhive.profile_id` |
 | HDHive account | Search/view/unlock HDHive resources | Browser profile logged into HDHive; account has required permissions/points | stored in CloakManager profile |
 | Telegram API / Telethon | Automate Telegram music bot interaction | Telegram API ID/hash and a user session with bot access | `telegram_music.api_id`, `api_hash`, `session_string`/`session_name` |
@@ -59,8 +59,7 @@ cp config.example.json config.json
   "pansou": { "url": "http://127.0.0.1:805" },
   "moviepilot": {
     "base_url": "http://127.0.0.1:3002",
-    "api_key": "replace-with-your-moviepilot-api-key",
-    "mcporter_server": "moviepilot"
+    "api_key": "replace-with-your-moviepilot-api-key"
   },
   "hdhive": {
     "cloak_url": "http://127.0.0.1:8080",

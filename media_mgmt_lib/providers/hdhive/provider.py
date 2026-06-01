@@ -44,16 +44,24 @@ def ensure_profile_running(profile_id: str) -> None:
     req = urllib.request.Request(f"{CLOAK_URL}/api/profiles/{profile_id}/launch", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
     urllib.request.urlopen(req, timeout=60).read()
 
-async def get_ws():
+async def get_ws(prefer_url: str | None = None):
+    """Connect to a real page CDP target, never a service worker."""
     profile_id = resolve_profile_id()
     ensure_profile_running(profile_id)
     resp = urllib.request.urlopen(f"{CLOAK_URL}/api/profiles/{profile_id}/cdp/json")
     pages = json.loads(resp.read())
-    for pg in pages:
-        url = pg.get("url","")
+    page_targets = [pg for pg in pages if pg.get("type") == "page" and pg.get("webSocketDebuggerUrl")]
+    if prefer_url:
+        for pg in page_targets:
+            if prefer_url in pg.get("url", ""):
+                return await websockets.connect(pg["webSocketDebuggerUrl"], max_size=10*1024*1024)
+    for pg in page_targets:
+        url = pg.get("url", "")
         if "hdhive.com" in url and "115cdn" not in url:
             return await websockets.connect(pg["webSocketDebuggerUrl"], max_size=10*1024*1024)
-    return await websockets.connect(pages[0]["webSocketDebuggerUrl"], max_size=10*1024*1024)
+    if page_targets:
+        return await websockets.connect(page_targets[0]["webSocketDebuggerUrl"], max_size=10*1024*1024)
+    raise RuntimeError("No browser page CDP target found; CloakManager returned only non-page targets")
 
 _MID = [0]
 async def cdp(ws, method, params=None):
@@ -131,13 +139,101 @@ async def search_titles(keyword):
         await ws.close()
 
 
+async def search_tmdb(media_kind: str, tmdbid: str):
+    """Search HDHive by typed TMDB ID tag and return the matched media/resources."""
+    kind = media_kind.lower()
+    if kind in {"movie", "电影"}:
+        search_type = "movie_tmdb_id"
+    elif kind in {"tv", "series", "电视剧", "剧集"}:
+        search_type = "tv_tmdb_id"
+    else:
+        raise ValueError("media_kind must be movie or tv")
+    url = f"https://hdhive.com/search?query={tmdbid}&type={search_type}&page=1"
+    ws = await get_ws()
+    try:
+        await navigate(ws, url, wait=6, scroll=2)
+        raw = await val(ws, """
+            var links = document.querySelectorAll('a[href*="/tmdb/"], a[href*="/tv/"], a[href*="/movie/"]');
+            var out = [];
+            links.forEach(function(a) {
+                var h = a.href;
+                var text = (a.innerText || '').trim().replace(/\s+/g, ' ');
+                if (!h.includes('hdhive.com')) return;
+                if (h.includes('/person/') || h.includes('themoviedb.org')) return;
+                if (text || h.includes('/tmdb/')) out.push({name:text, url:h});
+            });
+            JSON.stringify(out);
+        """)
+        matches = json.loads(raw) if raw else []
+        media_url = ""
+        for item in matches:
+            if f"/tmdb/{'movie' if search_type == 'movie_tmdb_id' else 'tv'}/{tmdbid}" in item.get("url", ""):
+                media_url = item["url"]
+                break
+        if not media_url and matches:
+            media_url = matches[0].get("url", "")
+        if media_url and "/tmdb/" in media_url:
+            await navigate(ws, media_url, wait=6, scroll=8)
+            media_url = await val(ws, "location.href")
+        resources = await _list_resources_on_current_page(ws)
+        if not resources and media_url:
+            await ws.close()
+            resources = await list_resources(media_url)
+            return {"found": bool(media_url), "search_url": url, "media_url": media_url, "matches": matches, "resources": resources}
+        return {"found": bool(media_url), "search_url": url, "media_url": media_url, "matches": matches, "resources": resources}
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+async def _list_resources_on_current_page(ws):
+    await val(ws, "window.scrollTo(0, 0)")
+    await asyncio.sleep(1)
+    for _ in range(6):
+        await cdp(ws, "Runtime.evaluate", {"expression": "window.scrollBy(0, 800)"})
+        await asyncio.sleep(0.3)
+    await val(ws, """
+        var tabs = document.querySelectorAll('button[role="tab"]');
+        for (var i = 0; i < tabs.length; i++) {
+            if ((tabs[i].innerText || '').includes('115')) { tabs[i].click(); break; }
+        }
+    """)
+    await asyncio.sleep(2)
+    for _ in range(4):
+        await cdp(ws, "Runtime.evaluate", {"expression": "window.scrollBy(0, 800)"})
+        await asyncio.sleep(0.3)
+    raw = await val(ws, """
+        var links = document.querySelectorAll('a[href*="/resource/115/"]');
+        var out = [];
+        links.forEach(function(a) {
+            var lines = (a.innerText||'').split('\n').map(function(l){return l.trim()}).filter(Boolean);
+            var tags = [];
+            var cost = '';
+            var desc = '';
+            var size = '';
+            var resolution = '';
+            for (var i = 1; i < lines.length; i++) {
+                var l = lines[i];
+                if (l === '官组' || l === '已完结' || l === '疑似失效' || l === '免费' || l === 'VIP') { tags.push(l); }
+                else if (l.includes('积分')) { cost = l; }
+                else if (l.match(/^[\d.]+\s*[GTMB]/i)) { size = l; }
+                else if (l.match(/^[1248]0?80P$|2160P|4K/i)) { resolution = l; }
+                else if (l.length > 5 && !l.match(/^发布于/)) { if (!desc) desc = l; }
+            }
+            out.push({desc:desc, resolution:resolution, size:size, cost:cost, tags:tags.join(','), url:a.href});
+        });
+        JSON.stringify(out);
+    """)
+    return json.loads(raw) if raw else []
 def pick_best_resource(resources):
     def key(r):
-        tags = r.get("tags","")
-        desc = r.get("desc","") + r.get("desc","").lower()
-        cost = r.get("cost","")
+        tags = r.get("tags", "")
+        desc = r.get("desc", "") + r.get("desc", "").lower()
+        resolution = r.get("resolution") or ""
+        cost = r.get("cost", "")
         is_gz = 1 if "官组" in tags else 0
-        is_4k = 1 if any(k in desc for k in ["4K","4k","2160"]) else 0
+        is_4k = 1 if any(k in desc for k in ["4K", "4k", "2160"]) or any(k in resolution for k in ["2160", "4K"]) else 0
         is_free = 1 if ("免费" in tags or cost == "" or cost == "免费") else 0
         is_bad = 1 if "疑似失效" in tags else 0
         return (-is_bad, is_gz, is_4k, is_free)
@@ -281,6 +377,20 @@ def main(argv: list[str] | None = None) -> int:
         else:
             best = pick_best_resource(resources)
             print(json.dumps({"best": best, "all": resources}, ensure_ascii=False, indent=2))
+    elif cmd == "tmdb":
+        if len(args) < 4:
+            print("用法: python3 scripts/hdhive.py tmdb <movie|tv> <tmdbid> [--select N] [--all]")
+            return 1
+        kind = args[2]
+        tmdbid = args[3]
+        result = asyncio.run(search_tmdb(kind, tmdbid))
+        if opts["all"]:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        elif opts["select"] is not None and opts["select"] < len(result.get("resources", [])):
+            selected = result["resources"][opts["select"]]
+            print(json.dumps({"selected": selected, "result": result}, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
     elif cmd == "unlock":
         url = args[2] if len(args) > 2 else ""
         if not url:

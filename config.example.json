@@ -4,8 +4,7 @@
   },
   "moviepilot": {
     "base_url": "http://127.0.0.1:3002",
-    "api_key": "replace-with-your-moviepilot-api-key",
-    "mcporter_server": "moviepilot"
+    "api_key": "replace-with-your-moviepilot-api-key"
   },
   "hdhive": {
     "cloak_url": "http://127.0.0.1:8080",

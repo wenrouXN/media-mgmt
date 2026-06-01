@@ -10,8 +10,8 @@ Use when the user asks to search, transfer, subscribe, download, or unlock media
 ## Default intent
 
 - 用户直接发 115 分享链接+密码 → 自动转存到 MoviePilot P115StrmHelper，无需二次确认。
-- 用户要找影视资源 → 先盘搜；盘搜不足时用 HDHive。
-- 用户要订阅影视 → 用 MoviePilot；优先 mcporter/MCP 搜索识别，再添加订阅。
+- 用户要找影视资源 → 先识别媒体，再按媒体类型用 TMDB ID 搜 HDHive；HDHive 无资源时直接用 MoviePilot REST API 搜索并下载。
+- 用户要订阅影视 → 先下载已有资源；确认未完结后再用 MoviePilot REST API 创建/更新订阅。
 - 用户要下歌/音乐 → 用 Telegram Music provider，默认下载目录来自 `config.json`。
 
 ## Config
@@ -21,7 +21,7 @@ Runtime defaults live in local `config.json` at skill root. Public template: `co
 Main sections:
 
 - `pansou.url`
-- `moviepilot.base_url`, `moviepilot.api_key`, optional `moviepilot.mcporter_server`
+- `moviepilot.base_url`, `moviepilot.api_key`
 - `hdhive.cloak_url`, `hdhive.profile_name`, optional `hdhive.profile_id`
 - `telegram_music.api_id`, `telegram_music.api_hash`, `telegram_music.session_string` or `session_name`, `telegram_music.bot`, `telegram_music.download_dir`
 
@@ -29,23 +29,34 @@ HDHive profile discovery: if `hdhive.profile_id` is empty, the provider finds a 
 
 ## Workflows
 
-### Search → 115 transfer
+### Watch request: identify → HDHive → MoviePilot API → subscribe
 
-1. Search 盘搜 for 115 resources.
-2. If the result already contains share URL + password, call P115StrmHelper transfer.
-3. If user supplied the share URL directly, skip search and transfer immediately.
+When the user says “我要看 X” or asks to find/watch/download a film/series:
+
+1. **Identify first**: use MoviePilot/TMDB REST API to determine title, media type, year, TMDB ID, original title/aliases, season, completion status, total/current episodes.
+2. **Search HDHive by typed TMDB tag**:
+   - movie → `https://hdhive.com/search?query=<tmdbid>&type=movie_tmdb_id&page=1`
+   - TV/series → `https://hdhive.com/search?query=<tmdbid>&type=tv_tmdb_id&page=1`
+   - Do not use ordinary keyword search first when a TMDB ID is known.
+3. **Hunt 115 first**: open the matched HDHive media page, switch to the 115 tab, list resources, pick by user preference, unlock, and transfer via MoviePilot P115StrmHelper.
+4. **Only if HDHive has no usable 115 resource**, use MoviePilot REST API for PT search/download. Do not use MCP as fallback.
+5. **Before downloading**, call `GET /api/v1/download/paths` and `GET /api/v1/media/category/config`, compute a concrete `save_path`, and pass it explicitly to the download API.
+6. **Subscribe last**: if the media is not completed, create/update a MoviePilot subscription after existing resources are handled.
 
 ### HDHive unlock
 
-1. Run `scripts/hdhive.py search` and choose the right title/year.
-2. Run `scripts/hdhive.py resources`; accept auto-best unless the user asked for a specific release.
-3. Run `scripts/hdhive.py unlock`, then transfer the returned 115 link through MoviePilot.
+1. Connect CDP to a real `type=page` target; never attach to `service_worker`.
+2. Run `scripts/hdhive.py tmdb <movie|tv> <tmdbid>` to find the HDHive media page/resources.
+3. Run `scripts/hdhive.py unlock <resource_url>`.
+4. After unlock/confirm, extract the plaintext 115 URL from `location.href`, page text, or `a[href*="115"]` / `a[href*="115cdn"]`; do not rely on navigation only.
 
-### MoviePilot subscription
+### MoviePilot REST API
 
-1. Search/recognize media to get TMDB id, preferably via configured mcporter `moviepilot` server.
-2. Add subscription through MoviePilot REST or mcporter.
-3. Verify API success response.
+1. Use REST API directly for media identify/search/download/subscription.
+2. Search PT resources with `GET /api/v1/search/media/{mediaid}` or `GET /api/v1/search/title`.
+3. Download with `POST /api/v1/download/` or `POST /api/v1/download/add`, always passing explicit `save_path`.
+4. Create/update subscriptions with `/api/v1/subscribe/`.
+5. MCP/mcporter is not part of this workflow.
 
 ### Telegram music
 
@@ -55,12 +66,14 @@ HDHive profile discovery: if `hdhive.profile_id` is empty, the provider finds a 
 
 ## Critical caveats
 
-- MoviePilot REST auth: `apikey` query parameter only; `X-Api-Key` header does not work here.
+- MoviePilot REST auth: `apikey` query parameter works reliably in this environment.
 - HDHive blocks mainland IP; use the configured CloakManager profile/proxy.
-- HDHive CDP needs `Page.navigate`, not reload; after search input press Enter; detail pages need scrolling to lazy-load resources.
-- HDHive passwords are masked as `***`; click through the 115CDN confirmation page and read plaintext from URL.
+- HDHive TMDB search requires the correct search tag: `movie_tmdb_id` for movies, `tv_tmdb_id` for series.
+- HDHive CDP must attach to a `type=page` target, not `service_worker`; otherwise `document` is unavailable.
+- HDHive passwords may be masked as `***`; after unlock, read the plaintext share URL from `location.href`, page text, or 115/115cdn links.
+- MoviePilot download path: never call download without explicit `save_path`; compute it from `/api/v1/download/paths` + media category.
 - Telegram music bot selection uses inline `callback_data`; sending text `1` is wrong.
 
 ## Command reference
 
-Load `references/commands.md` for exact curl/Python commands and examples.
+Load `references/commands.md` for exact curl/Python commands and examples. Prefer the REST/API scripts in this skill over MCP/mcporter.

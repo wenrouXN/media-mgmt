@@ -1,0 +1,448 @@
+#!/usr/bin/env python3
+"""MoviePilot REST helper for media-mgmt.
+
+Primary API path for media identify/search/download/subscription workflows.
+Do not use MCP/mcporter as fallback.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+repo_root = Path(__file__).resolve().parents[1]
+repo_root_str = str(repo_root)
+if repo_root_str not in sys.path:
+    sys.path.insert(0, repo_root_str)
+
+from media_mgmt_lib.config import load_json_config, moviepilot_credentials
+
+
+def creds() -> dict[str, str]:
+    value = moviepilot_credentials(load_json_config())
+    if not value:
+        raise SystemExit("MoviePilot credentials missing: set moviepilot.base_url and moviepilot.api_key in config.json")
+    return value
+
+
+def api_url(path: str, params: dict[str, Any] | None = None) -> str:
+    c = creds()
+    base = c["BASE_URL"].rstrip()
+    query = {"apikey": c["API_KEY"]}
+    if params:
+        for k, v in params.items():
+            if v is not None and v != "":
+                query[k] = v
+    return f"{base}{path}?{urllib.parse.urlencode(query, doseq=True)}"
+
+
+def request(method: str, path: str, params: dict[str, Any] | None = None, body: Any | None = None) -> Any:
+    url = api_url(path, params)
+    data = None
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        raw = resp.read().decode("utf-8", "replace")
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def media_type_api_to_cn(media_type: str) -> str:
+    value = (media_type or "").lower()
+    if value in {"movie", "电影"}:
+        return "电影"
+    if value in {"tv", "series", "电视剧", "剧集"}:
+        return "电视剧"
+    if value in {"anime", "动漫"}:
+        # MoviePilot download directories model anime as TV categories.
+        return "电视剧"
+    return media_type
+
+
+def infer_category(media: dict[str, Any], category_config: dict[str, Any] | None = None) -> str:
+    """Infer MoviePilot media category from media metadata and category config.
+
+    This intentionally favors explicit media.category if present, then reproduces
+    the common MP category rules used by this environment.
+    """
+    explicit = media.get("category") or media.get("media_category")
+    if explicit:
+        return str(explicit)
+
+    media_type = media_type_api_to_cn(str(media.get("type") or media.get("media_type") or ""))
+    original_language = str(media.get("original_language") or "").lower()
+    origin_country = media.get("origin_country") or media.get("origin_countries") or []
+    if isinstance(origin_country, str):
+        countries = {x.strip().upper() for x in origin_country.replace(",", " ").split() if x.strip()}
+    else:
+        countries = {str(x).upper() for x in origin_country if x}
+    genres = media.get("genres") or media.get("genre_ids") or []
+    genre_ids: set[str] = set()
+    for g in genres:
+        if isinstance(g, dict):
+            if g.get("id") is not None:
+                genre_ids.add(str(g.get("id")))
+        elif g is not None:
+            genre_ids.add(str(g))
+
+    if media_type == "电影":
+        if original_language in {"zh", "cn", "bo", "za"} or countries & {"CN", "TW", "HK"}:
+            return "国产电影"
+        if original_language in {"ko", "ja"} or countries & {"KR", "KP", "JP"}:
+            return "日韩电影"
+        if original_language == "en" or countries & {"US", "GB", "UK", "FR", "DE", "ES", "IT", "NL", "PT", "RU"}:
+            return "欧美电影"
+        return "其他电影"
+
+    if media_type == "电视剧":
+        if "16" in genre_ids:
+            if countries & {"CN"}:
+                return "国语动漫"
+            return "其他动漫"
+        if "99" in genre_ids:
+            return "纪录片"
+        if "10762" in genre_ids:
+            return "儿童"
+        if genre_ids & {"10764", "10767"}:
+            return "综艺"
+        if countries & {"CN", "TW", "HK"}:
+            return "国产剧"
+        if countries & {"US", "FR", "GB", "DE", "ES", "IT", "NL", "PT", "RU", "UK"}:
+            return "欧美剧"
+        if countries & {"JP", "KP", "KR", "TH", "IN", "SG"} or original_language in {"ja", "ko", "th", "hi"}:
+            return "日韩剧"
+        return "其他剧集"
+
+    return ""
+
+
+def choose_download_path(media: dict[str, Any], paths: list[dict[str, Any]]) -> dict[str, Any]:
+    media_type = media_type_api_to_cn(str(media.get("type") or media.get("media_type") or ""))
+    category = infer_category(media)
+
+    def norm(v: Any) -> str:
+        return str(v or "").strip()
+
+    # 1. exact media_type + category match from MP paths
+    for item in sorted(paths, key=lambda x: x.get("priority") if x.get("priority") is not None else 999):
+        if norm(item.get("media_type")) == media_type and norm(item.get("media_category")) == category:
+            return {"save_path": item.get("save_path"), "media_type": media_type, "media_category": category, "source": "exact", "path_entry": item}
+
+    # 2. generic media_type path, with category appended as second-level dir when category exists.
+    for item in sorted(paths, key=lambda x: x.get("priority") if x.get("priority") is not None else 999):
+        if norm(item.get("media_type")) == media_type and not norm(item.get("media_category")):
+            base = str(item.get("save_path") or item.get("download_path") or "")
+            if category and base and not base.rstrip("/").endswith(category):
+                base = base.rstrip("/") + "/" + category + "/"
+            return {"save_path": base, "media_type": media_type, "media_category": category, "source": "generic_plus_category", "path_entry": item}
+
+    # 3. no safe path
+    return {"save_path": None, "media_type": media_type, "media_category": category, "source": "unresolved", "path_entry": None}
+
+
+def cmd_get(args: argparse.Namespace) -> None:
+    params = dict(p.split("=", 1) for p in args.param or [])
+    print_json(request("GET", args.path, params=params))
+
+
+def cmd_post(args: argparse.Namespace) -> None:
+    body = json.loads(args.json or "{}")
+    params = dict(p.split("=", 1) for p in args.param or [])
+    print_json(request("POST", args.path, params=params, body=body))
+
+
+def cmd_paths(_: argparse.Namespace) -> None:
+    print_json(request("GET", "/api/v1/download/paths"))
+
+
+def cmd_category(_: argparse.Namespace) -> None:
+    print_json(request("GET", "/api/v1/media/category/config"))
+
+
+def cmd_resolve_path(args: argparse.Namespace) -> None:
+    media = json.loads(args.media_json)
+    paths = request("GET", "/api/v1/download/paths")
+    print_json(choose_download_path(media, paths or []))
+
+
+def normalize_mtype(value: str | None) -> str | None:
+    if not value:
+        return value
+    lower = value.lower()
+    if lower in {"tv", "series"}:
+        return "电视剧"
+    if lower == "movie":
+        return "电影"
+    if lower == "anime":
+        return "动漫"
+    return value
+
+
+def cmd_search(args: argparse.Namespace) -> None:
+    mediaid = args.mediaid or f"tmdb:{args.tmdbid}"
+    params = {"mtype": normalize_mtype(args.media_type), "title": args.title, "year": args.year, "season": args.season, "sites": args.sites}
+    print_json(request("GET", f"/api/v1/search/media/{urllib.parse.quote(mediaid, safe=':')}", params=params))
+
+
+def cmd_title(args: argparse.Namespace) -> None:
+    print_json(request("GET", "/api/v1/search/title", params={"keyword": args.keyword, "page": args.page, "sites": args.sites}))
+
+
+def cmd_media_search(args: argparse.Namespace) -> None:
+    print_json(request("GET", "/api/v1/media/search", params={"title": args.title, "type": args.kind, "page": args.page, "count": args.count}))
+
+
+def cmd_recognize(args: argparse.Namespace) -> None:
+    print_json(request("GET", "/api/v1/media/recognize", params={"title": args.title, "subtitle": args.subtitle}))
+
+
+def cmd_media_detail(args: argparse.Namespace) -> None:
+    mediaid = args.mediaid or f"tmdb:{args.tmdbid}"
+    print_json(request("GET", f"/api/v1/media/{urllib.parse.quote(mediaid, safe=':')}", params={"type_name": normalize_mtype(args.media_type), "title": args.title, "year": args.year}))
+
+
+def _pick_media_search_result(results: Any, title: str | None = None, media_type: str | None = None, year: str | None = None) -> Any:
+    if not isinstance(results, list) or not results:
+        return None
+    wanted_type = normalize_mtype(media_type)
+    def score(item: dict[str, Any]) -> tuple[int, float]:
+        s = 0
+        if wanted_type and str(item.get("type") or item.get("media_type") or "") == wanted_type:
+            s += 20
+        if year and str(item.get("year") or "") == str(year):
+            s += 10
+        names = [str(item.get(k) or "") for k in ["title", "name", "en_title", "original_title", "original_name"]]
+        names.extend(str(x) for x in item.get("names") or [])
+        if title and any(title in n or n in title for n in names if n):
+            s += 30
+        return (s, float(item.get("vote_average") or item.get("vote") or 0))
+    return max(results, key=score)
+
+
+def _title_variants(title: str | None) -> list[str]:
+    if not title:
+        return []
+    variants = [title]
+    swaps = [("职员", "社员"), ("社员", "职员"), ("職員", "社員"), ("社員", "職員")]
+    for old, new in swaps:
+        if old in title:
+            variants.append(title.replace(old, new))
+    # de-duplicate preserving order
+    out = []
+    for v in variants:
+        if v and v not in out:
+            out.append(v)
+    return out
+
+
+def cmd_identify(args: argparse.Namespace) -> None:
+    if args.tmdbid:
+        media_type = normalize_mtype(args.media_type or "tv")
+        detail = request("GET", f"/api/v1/media/tmdb:{args.tmdbid}", params={"type_name": media_type, "title": args.title, "year": args.year})
+        print_json({"selected": detail, "source": "detail"})
+        return
+    all_results: list[Any] = []
+    used_query = None
+    for query in _title_variants(args.title):
+        results = request("GET", "/api/v1/media/search", params={"title": query, "type": "media", "page": 1, "count": args.count})
+        if isinstance(results, list):
+            all_results.extend(results)
+        if results:
+            used_query = query
+            break
+    selected = _pick_media_search_result(all_results, title=args.title, media_type=args.media_type, year=args.year)
+    print_json({"selected": selected, "results": all_results, "source": "media-search", "query": used_query})
+
+
+def _load_json_arg(value: str) -> Any:
+    path = Path(value)
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(value)
+
+
+def cmd_download(args: argparse.Namespace) -> None:
+    media_in = _load_json_arg(args.media_json) if args.media_json else None
+    torrent_in = _load_json_arg(args.torrent_json)
+    save_path = args.save_path
+    resolved = None
+    if not save_path and media_in:
+        paths = request("GET", "/api/v1/download/paths") or []
+        resolved = choose_download_path(media_in, paths)
+        save_path = resolved.get("save_path")
+    if not save_path:
+        raise SystemExit("Refusing to download without save_path. Pass --save-path or --media-json so it can be resolved.")
+    if args.dry_run:
+        print_json({"dry_run": True, "endpoint": "/api/v1/download/" if media_in else "/api/v1/download/add", "save_path": save_path, "resolved_path": resolved, "media_in": media_in, "torrent_in": torrent_in, "downloader": args.downloader})
+        return
+    if media_in:
+        body = {"media_in": media_in, "torrent_in": torrent_in, "downloader": args.downloader, "save_path": save_path}
+        print_json(request("POST", "/api/v1/download/", body=body))
+    else:
+        body = {"torrent_in": torrent_in, "tmdbid": args.tmdbid, "doubanid": args.doubanid, "downloader": args.downloader, "save_path": save_path}
+        print_json(request("POST", "/api/v1/download/add", body=body))
+
+
+def cmd_subscribe_get(args: argparse.Namespace) -> None:
+    mediaid = args.mediaid or f"tmdb:{args.tmdbid}"
+    print_json(request("GET", f"/api/v1/subscribe/media/{urllib.parse.quote(mediaid, safe=':')}", params={"season": args.season, "title": args.title}))
+
+
+def cmd_subscribe(args: argparse.Namespace) -> None:
+    body: dict[str, Any] = _load_json_arg(args.json) if args.json else {}
+    if args.name:
+        body["name"] = args.name
+    if args.media_type:
+        body["type"] = normalize_mtype(args.media_type)
+    if args.year:
+        body["year"] = args.year
+    if args.tmdbid:
+        body["tmdbid"] = int(args.tmdbid)
+        body.setdefault("mediaid", f"tmdb:{args.tmdbid}")
+    if args.season is not None:
+        body["season"] = args.season
+    if args.sites:
+        body["sites"] = [int(x) for x in args.sites.split(",") if x.strip()]
+    if args.resolution:
+        body["resolution"] = args.resolution
+    if args.quality:
+        body["quality"] = args.quality
+    if args.save_path:
+        body["save_path"] = args.save_path
+    if args.downloader:
+        body["downloader"] = args.downloader
+    if args.dry_run:
+        print_json({"dry_run": True, "endpoint": "/api/v1/subscribe/", "body": body})
+        return
+    print_json(request("POST", "/api/v1/subscribe/", body=body))
+
+
+def print_json(value: Any) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="MoviePilot REST helper for media-mgmt")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("get", help="GET arbitrary MoviePilot API path")
+    p.add_argument("path")
+    p.add_argument("param", nargs="*", help="query params as key=value")
+    p.set_defaults(func=cmd_get)
+
+    p = sub.add_parser("post", help="POST arbitrary MoviePilot API path")
+    p.add_argument("path")
+    p.add_argument("param", nargs="*", help="query params as key=value")
+    p.add_argument("--json", default="{}", help="JSON request body")
+    p.set_defaults(func=cmd_post)
+
+    p = sub.add_parser("paths", help="List configured download paths")
+    p.set_defaults(func=cmd_paths)
+
+    p = sub.add_parser("category", help="Show media category config")
+    p.set_defaults(func=cmd_category)
+
+    p = sub.add_parser("resolve-path", help="Resolve save_path from media JSON")
+    p.add_argument("media_json", help='e.g. {"type":"tv","origin_country":["KR"],"original_language":"ko"}')
+    p.set_defaults(func=cmd_resolve_path)
+
+    p = sub.add_parser("search", help="Search resources by media id")
+    p.add_argument("--mediaid", help="tmdb:123 / douban:123 / bangumi:123")
+    p.add_argument("--tmdbid", help="TMDB id; becomes tmdb:<id>")
+    p.add_argument("--media-type", dest="media_type", help="movie/tv or MoviePilot mtype")
+    p.add_argument("--title")
+    p.add_argument("--year")
+    p.add_argument("--season")
+    p.add_argument("--sites")
+    p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("title", help="Fuzzy search resources by title")
+    p.add_argument("keyword")
+    p.add_argument("--page", type=int, default=0)
+    p.add_argument("--sites")
+    p.set_defaults(func=cmd_title)
+
+    p = sub.add_parser("media-search", help="Search MoviePilot/TMDB media metadata by title")
+    p.add_argument("title")
+    p.add_argument("--kind", default="media", help="media or person")
+    p.add_argument("--page", type=int, default=1)
+    p.add_argument("--count", type=int, default=8)
+    p.set_defaults(func=cmd_media_search)
+
+    p = sub.add_parser("recognize", help="Recognize media from torrent/title text")
+    p.add_argument("title")
+    p.add_argument("--subtitle")
+    p.set_defaults(func=cmd_recognize)
+
+    p = sub.add_parser("media-detail", help="Get media detail by tmdb/media id")
+    p.add_argument("--mediaid")
+    p.add_argument("--tmdbid")
+    p.add_argument("--media-type", dest="media_type", required=True, help="movie/tv or Chinese type")
+    p.add_argument("--title")
+    p.add_argument("--year")
+    p.set_defaults(func=cmd_media_detail)
+
+    p = sub.add_parser("identify", help="Identify what the user wants to watch")
+    p.add_argument("title", nargs="?")
+    p.add_argument("--tmdbid")
+    p.add_argument("--media-type", dest="media_type", help="movie/tv or Chinese type")
+    p.add_argument("--year")
+    p.add_argument("--count", type=int, default=8)
+    p.set_defaults(func=cmd_identify)
+
+    p = sub.add_parser("download", help="Add download with explicit or resolved save_path")
+    p.add_argument("--torrent-json", required=True, help="TorrentInfo JSON or path")
+    p.add_argument("--media-json", help="MediaInfo JSON or path; enables /api/v1/download/ and path resolution")
+    p.add_argument("--save-path")
+    p.add_argument("--downloader")
+    p.add_argument("--tmdbid", type=int)
+    p.add_argument("--doubanid")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_download)
+
+    p = sub.add_parser("subscribe-get", help="Get subscription by media id")
+    p.add_argument("--mediaid")
+    p.add_argument("--tmdbid")
+    p.add_argument("--season", type=int)
+    p.add_argument("--title")
+    p.set_defaults(func=cmd_subscribe_get)
+
+    p = sub.add_parser("subscribe", help="Create MoviePilot subscription")
+    p.add_argument("--json", help="Full Subscribe JSON or path")
+    p.add_argument("--name")
+    p.add_argument("--media-type", dest="media_type")
+    p.add_argument("--year")
+    p.add_argument("--tmdbid")
+    p.add_argument("--season", type=int)
+    p.add_argument("--sites", help="comma-separated site ids")
+    p.add_argument("--resolution")
+    p.add_argument("--quality")
+    p.add_argument("--save-path")
+    p.add_argument("--downloader")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_subscribe)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    args.func(args)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

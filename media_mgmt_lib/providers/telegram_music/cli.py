@@ -79,7 +79,7 @@ def normalize_override_config(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def resolve_runtime_settings(args: argparse.Namespace) -> dict[str, Any]:
-    cfg = merge_config_sources(load_default_config(), normalize_override_config(load_json_config(args.config)))
+    cfg = merge_config_sources(normalize_override_config(load_json_config(args.config)), load_default_config())
     merged = merge_config_sources(
         {
             "bot": args.bot,

@@ -1,6 +1,6 @@
 ---
 name: media-mgmt
-description: "搜索媒体资源、转存 115 分享、订阅 MoviePilot、解锁 HDHive、下载 Telegram 音乐。"
+description: "搜索影视资源、转存 115 分享、订阅 MoviePilot、解锁 HDHive、搜索并下载音乐/歌曲。当用户说'我要看/找/下载/听'某部影视或歌曲时使用。"
 ---
 
 # 媒体资源管理
@@ -60,8 +60,10 @@ When the user says “我要看 X” or asks to find/watch/download a film/serie
 
 ### Telegram music
 
-1. Run `scripts/telegram_music_bot.py --query "歌手 歌名"`.
-2. Prefer default `button_index=1` unless the user specifies a version.
+1. Run `.venv/bin/python3 scripts/telegram_music_bot.py --query "歌手 歌名"`.
+   - **搜索词格式**：建议"歌名 歌手"或"歌手 歌名"均可，bot 对顺序不敏感。
+   - **必须使用 `.venv/bin/python3`**，确保 telethon 等依赖可用。
+2. `button_index=1` 是网易云搜索排序第一的结果，不一定是原版（可能是 Live、翻唱等）。如需指定版本，先看搜索结果列表，用 `--button-index N` 选择。
 3. Return downloaded file path; if sending back to chat, use file attachment rather than media directive for FLAC.
 
 ## Critical caveats

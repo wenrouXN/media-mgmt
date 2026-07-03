@@ -111,8 +111,10 @@ Unlock 三步：点「确定解锁」→ 点确认对话框「确定」→ 点 1
 
 ## Telegram 音乐下载
 
+> **运行环境**：所有命令必须使用 `.venv/bin/python3`，确保 telethon 等依赖可用。
+
 ```bash
-python3 scripts/telegram_music_bot.py --query "梁静茹 勇气"
+.venv/bin/python3 scripts/telegram_music_bot.py --query "梁静茹 勇气"
 ```
 
 Override defaults only when needed:

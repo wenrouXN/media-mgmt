@@ -71,6 +71,95 @@ def media_type_api_to_cn(media_type: str) -> str:
     return media_type
 
 
+def _split_rule_values(value: Any) -> set[str]:
+    if value in (None, ""):
+        return set()
+    if isinstance(value, str):
+        return {item.strip().lower() for item in value.replace(",", " ").split() if item.strip()}
+    if isinstance(value, list | tuple | set):
+        return {str(item).strip().lower() for item in value if str(item).strip()}
+    return {str(value).strip().lower()}
+
+
+def _category_config_data(category_config: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(category_config, dict):
+        return {}
+    data = category_config.get("data")
+    if isinstance(data, dict):
+        return data
+    return category_config
+
+
+def _configured_category_key(media_type: str) -> str:
+    if media_type == "电影":
+        return "movie"
+    if media_type == "电视剧":
+        return "tv"
+    return ""
+
+
+def _media_year(media: dict[str, Any]) -> str:
+    for key in ("year", "release_year", "first_air_date", "release_date"):
+        value = media.get(key)
+        if value:
+            return str(value)[:4]
+    return ""
+
+
+def _matches_category_rule(media: dict[str, Any], rule: dict[str, Any]) -> bool:
+    original_language = str(media.get("original_language") or "").lower()
+    origin_country = media.get("origin_country") or media.get("origin_countries") or []
+    production_countries = media.get("production_countries") or []
+    if isinstance(origin_country, str):
+        origin_values = _split_rule_values(origin_country)
+    else:
+        origin_values = {str(x).lower() for x in origin_country if x}
+    if isinstance(production_countries, str):
+        production_values = _split_rule_values(production_countries)
+    else:
+        production_values = {
+            str(x.get("iso_3166_1") or x.get("name") or x).lower() if isinstance(x, dict) else str(x).lower()
+            for x in production_countries
+            if x
+        }
+    genres = media.get("genres") or media.get("genre_ids") or []
+    genre_values: set[str] = set()
+    for genre in genres:
+        if isinstance(genre, dict):
+            if genre.get("id") is not None:
+                genre_values.add(str(genre["id"]).lower())
+        elif genre is not None:
+            genre_values.add(str(genre).lower())
+
+    checks = [
+        ("original_language", {original_language} if original_language else set()),
+        ("origin_country", origin_values),
+        ("production_countries", production_values),
+        ("genre_ids", genre_values),
+        ("release_year", {_media_year(media)} if _media_year(media) else set()),
+    ]
+    for key, media_values in checks:
+        rule_values = _split_rule_values(rule.get(key))
+        if rule_values and not (media_values & rule_values):
+            return False
+    return True
+
+
+def _infer_category_from_config(media: dict[str, Any], media_type: str, category_config: dict[str, Any] | None) -> str:
+    typed_config = _category_config_data(category_config).get(_configured_category_key(media_type))
+    if not isinstance(typed_config, dict):
+        return ""
+
+    fallback = ""
+    for category, rule in typed_config.items():
+        if rule is None:
+            fallback = str(category)
+            continue
+        if isinstance(rule, dict) and _matches_category_rule(media, rule):
+            return str(category)
+    return fallback
+
+
 def infer_category(media: dict[str, Any], category_config: dict[str, Any] | None = None) -> str:
     """Infer MoviePilot media category from media metadata and category config.
 
@@ -82,6 +171,10 @@ def infer_category(media: dict[str, Any], category_config: dict[str, Any] | None
         return str(explicit)
 
     media_type = media_type_api_to_cn(str(media.get("type") or media.get("media_type") or ""))
+    configured_category = _infer_category_from_config(media, media_type, category_config)
+    if configured_category:
+        return configured_category
+
     original_language = str(media.get("original_language") or "").lower()
     origin_country = media.get("origin_country") or media.get("origin_countries") or []
     if isinstance(origin_country, str):
@@ -128,9 +221,9 @@ def infer_category(media: dict[str, Any], category_config: dict[str, Any] | None
     return ""
 
 
-def choose_download_path(media: dict[str, Any], paths: list[dict[str, Any]]) -> dict[str, Any]:
+def choose_download_path(media: dict[str, Any], paths: list[dict[str, Any]], category_config: dict[str, Any] | None = None) -> dict[str, Any]:
     media_type = media_type_api_to_cn(str(media.get("type") or media.get("media_type") or ""))
-    category = infer_category(media)
+    category = infer_category(media, category_config)
 
     def norm(v: Any) -> str:
         return str(v or "").strip()
@@ -174,7 +267,8 @@ def cmd_category(_: argparse.Namespace) -> None:
 def cmd_resolve_path(args: argparse.Namespace) -> None:
     media = json.loads(args.media_json)
     paths = request("GET", "/api/v1/download/paths")
-    print_json(choose_download_path(media, paths or []))
+    category_config = request("GET", "/api/v1/media/category/config")
+    print_json(choose_download_path(media, paths or [], category_config))
 
 
 def normalize_mtype(value: str | None) -> str | None:
@@ -280,7 +374,8 @@ def cmd_download(args: argparse.Namespace) -> None:
     resolved = None
     if not save_path and media_in:
         paths = request("GET", "/api/v1/download/paths") or []
-        resolved = choose_download_path(media_in, paths)
+        category_config = request("GET", "/api/v1/media/category/config")
+        resolved = choose_download_path(media_in, paths, category_config)
         save_path = resolved.get("save_path")
     if not save_path:
         raise SystemExit("Refusing to download without save_path. Pass --save-path or --media-json so it can be resolved.")

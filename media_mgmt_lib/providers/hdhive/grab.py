@@ -47,7 +47,14 @@ async def get_first_cdp_ws_url() -> str:
     ensure_profile_running(profile_id)
     resp = urllib.request.urlopen(f"{CLOAK_URL}/api/profiles/{profile_id}/cdp/json")
     pages = json.loads(resp.read())
-    return pages[0]["webSocketDebuggerUrl"]
+    page_targets = [page for page in pages if page.get("type") == "page" and page.get("webSocketDebuggerUrl")]
+    for page in page_targets:
+        url = page.get("url", "")
+        if "hdhive.com" in url and "115cdn" not in url:
+            return page["webSocketDebuggerUrl"]
+    if page_targets:
+        return page_targets[0]["webSocketDebuggerUrl"]
+    raise RuntimeError("No browser page CDP target found; CloakManager returned only non-page targets")
 
 
 async def unlock_share_in_existing_page(ws, resource_url: str) -> str:

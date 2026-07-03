@@ -152,7 +152,7 @@ async def search_tmdb(media_kind: str, tmdbid: str):
     ws = await get_ws()
     try:
         await navigate(ws, url, wait=6, scroll=2)
-        raw = await val(ws, """
+        raw = await val(ws, r"""
             var links = document.querySelectorAll('a[href*="/tmdb/"], a[href*="/tv/"], a[href*="/movie/"]');
             var out = [];
             links.forEach(function(a) {
@@ -203,7 +203,7 @@ async def _list_resources_on_current_page(ws):
     for _ in range(4):
         await cdp(ws, "Runtime.evaluate", {"expression": "window.scrollBy(0, 800)"})
         await asyncio.sleep(0.3)
-    raw = await val(ws, """
+    raw = await val(ws, r"""
         var links = document.querySelectorAll('a[href*="/resource/115/"]');
         var out = [];
         links.forEach(function(a) {

@@ -1,6 +1,6 @@
 ---
 name: media-mgmt
-description: "搜索影视资源、转存 115 分享、订阅 MoviePilot、解锁 HDHive、搜索并下载音乐/歌曲。当用户说'我要看/找/下载/听'某部影视或歌曲时使用。"
+description: "搜索影视资源、转存 115 分享、订阅 MoviePilot、解锁 HDHive、搜索并下载音乐/歌曲、解析下载抖音/Bilibili 视频。当用户说'我要看/找/下载/听'某部影视或歌曲，或发送抖音/Bilibili 链接时使用。"
 ---
 
 # 媒体资源管理

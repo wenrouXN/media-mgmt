@@ -106,6 +106,49 @@ When the user says “我要看 X” or asks to find/watch/download a film/serie
 - 部分抖音接口（收藏/喜欢）需要 cookie，当前 provider 不支持 cookie 认证
 - Bilibili 短链 b23.tv 需要先解析重定向获取真实 URL
 
+## Dependencies & Setup
+
+### Douyin_TikTok_Download_API (抖音/Bilibili/TikTok 解析后端)
+
+抖音和 Bilibili provider 依赖 [Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) 作为解析后端。
+
+**Docker 部署（推荐）：**
+```bash
+docker run -d --name douyin-api \
+  -p 7899:8080 \
+  -v /path/to/config.yaml:/Douyin_TikTok_Download_API/config.yaml \
+  evil0ctal/douyin_tiktok_download_api
+```
+
+**或直接部署：**
+```bash
+git clone https://github.com/Evil0ctal/Douyin_TikTok_Download_API.git
+cd Douyin_TikTok_Download_API
+pip install -r requirements.txt
+python main.py
+```
+
+**重要配置：**
+- 默认端口 8080（映射到 config.json 中的 `7899`）
+- 抖音需要在 `config.yaml` 中配置浏览器 Cookie，否则解析会被风控拦截
+- Bilibili 部分功能也可能需要 Cookie
+- 项目支持抖音/TikTok/Bilibili/快手四平台
+
+### Telegram Music Bot (音乐下载)
+
+```bash
+cd /path/to/media-mgmt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+# requirements.txt: telethon, python-dotenv, websockets
+```
+
+必须使用 `.venv/bin/python3` 运行，确保 telethon 等依赖可用。
+
+### ffmpeg (Bilibili 视频下载)
+
+Bilibili 下载需要 ffmpeg 合并 DASH 音视频流。本机已安装 ffmpeg 5.1.6。
+
 ## Command reference
 
 Load `references/commands.md` for exact curl/Python commands and examples. Prefer the REST/API scripts in this skill over MCP/mcporter.

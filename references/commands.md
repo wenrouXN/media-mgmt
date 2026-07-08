@@ -127,3 +127,30 @@ python3 scripts/telegram_music_bot.py \
 ```
 
 关键：发送 `/search <关键词>` 触发搜索；inline 按钮必须用 `callback_data`，不能发文字 `1`。
+
+## 抖音解析与下载
+
+```bash
+# 解析视频元数据（含章节/chapters）
+.venv/bin/python3 scripts/douyin.py parse "https://v.douyin.com/xxx" --json
+
+# 下载视频
+.venv/bin/python3 scripts/douyin.py download "https://v.douyin.com/xxx"
+```
+
+依赖 Douyin_TikTok_Download_API 后端（默认 `http://localhost:7899`）。
+
+## Bilibili 解析与下载
+
+```bash
+# 解析视频元数据
+.venv/bin/python3 scripts/bilibili.py parse "https://www.bilibili.com/video/BVxxx" --json
+
+# 下载视频（默认 1080P）
+.venv/bin/python3 scripts/bilibili.py download "https://www.bilibili.com/video/BVxxx"
+
+# 指定画质：120=4K, 80=1080P, 64=720P
+.venv/bin/python3 scripts/bilibili.py download "https://www.bilibili.com/video/BVxxx" --quality 120
+```
+
+下载原理：API 返回 DASH 视频流+音频流 → ffmpeg 合并为 mp4。需要设置 Referer: https://www.bilibili.com

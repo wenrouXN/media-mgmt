@@ -24,6 +24,8 @@ Main sections:
 - `moviepilot.base_url`, `moviepilot.api_key`
 - `hdhive.cloak_url`, `hdhive.profile_name`, optional `hdhive.profile_id`
 - `telegram_music.api_id`, `telegram_music.api_hash`, `telegram_music.session_string` or `session_name`, `telegram_music.bot`, `telegram_music.download_dir`
+- `douyin.api_base_url`, `douyin.download_dir`, `douyin.timeout`
+- `bilibili.api_base_url`, `bilibili.download_dir`, `bilibili.quality`, `bilibili.timeout`
 
 HDHive profile discovery: if `hdhive.profile_id` is empty, the provider finds a CloakManager profile by `hdhive.profile_name`; if only one profile exists, it uses that. It also tries to launch a stopped profile before CDP access.
 
@@ -66,6 +68,29 @@ When the user says “我要看 X” or asks to find/watch/download a film/serie
 2. `button_index=1` 是网易云搜索排序第一的结果，不一定是原版（可能是 Live、翻唱等）。如需指定版本，先看搜索结果列表，用 `--button-index N` 选择。
 3. Return downloaded file path; if sending back to chat, use file attachment rather than media directive for FLAC.
 
+### 抖音解析与下载
+
+当用户发送抖音链接（含 `douyin.com` 或 `v.douyin.com`）时：
+
+1. **解析优先**：调 `scripts/douyin.py parse <url> --json` 获取元数据
+2. **AI 解读**：基于返回的标题/描述/章节/统计，用 AI 做内容解读
+3. **按需下载**：
+   - 用户说"下载视频" → `scripts/douyin.py download <url>`
+   - 用户说"下载里面的歌" → 解析 chapter 中的曲目列表 → 逐首调 Telegram Music Bot
+4. **自动触发**：链接匹配 `douyin\.com|iesdouyin\.com` → 自动走抖音流程
+
+### Bilibili 解析与下载
+
+当用户发送 Bilibili 链接（含 `bilibili.com` 或 `b23.tv`）时：
+
+1. **解析优先**：调 `scripts/bilibili.py parse <url> --json` 获取元数据
+2. **AI 解读**：基于返回的标题/UP主/统计/评论，用 AI 做内容解读
+3. **按需下载**：
+   - 用户说"下载视频" → `scripts/bilibili.py download <url>`
+   - 指定画质 → `--quality 120` (4K) / `80` (1080P) / `64` (720P)
+4. **自动触发**：链接匹配 `bilibili\.com|b23\.tv` → 自动走 Bilibili 流程
+5. **下载原理**：API 返回 DASH 视频流+音频流 → ffmpeg 合并为 mp4
+
 ## Critical caveats
 
 - MoviePilot REST auth: `apikey` query parameter works reliably in this environment.
@@ -75,6 +100,11 @@ When the user says “我要看 X” or asks to find/watch/download a film/serie
 - HDHive passwords may be masked as `***`; after unlock, read the plaintext share URL from `location.href`, page text, or 115/115cdn links.
 - MoviePilot download path: never call download without explicit `save_path`; compute it from `/api/v1/download/paths` + media category.
 - Telegram music bot selection uses inline `callback_data`; sending text `1` is wrong.
+- Bilibili 下载需要 ffmpeg 合并音视频流（本机已安装 ffmpeg 5.1.6）
+- Bilibili 下载需要设置 Referer: https://www.bilibili.com
+- 抖音 `/api/download` 直接返回 mp4，不需要额外处理
+- 部分抖音接口（收藏/喜欢）需要 cookie，当前 provider 不支持 cookie 认证
+- Bilibili 短链 b23.tv 需要先解析重定向获取真实 URL
 
 ## Command reference
 

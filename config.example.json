@@ -4,7 +4,8 @@
   },
   "moviepilot": {
     "base_url": "http://127.0.0.1:3002",
-    "api_key": "replace-with-your-moviepilot-api-key"
+    "api_key": "***",
+    "mcporter_server": "moviepilot"
   },
   "hdhive": {
     "cloak_url": "http://127.0.0.1:8080",
@@ -22,5 +23,16 @@
     "search_timeout": 20,
     "download_timeout": 30,
     "poll_interval": 1
+  },
+  "douyin": {
+    "api_base_url": "http://localhost:7899",
+    "download_dir": "./downloads/douyin",
+    "timeout": 60
+  },
+  "bilibili": {
+    "api_base_url": "http://localhost:7899",
+    "download_dir": "./downloads/bilibili",
+    "quality": 80,
+    "timeout": 120
   }
 }

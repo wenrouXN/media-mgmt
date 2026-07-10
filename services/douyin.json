@@ -1,0 +1,22 @@
+{
+  "id": "douyin",
+  "name": "Douyin downloader API",
+  "kind": "content_fetcher",
+  "description": "Parse/download Douyin via local API",
+  "config_section": "douyin",
+  "required_config": [
+    "api_base_url",
+    "download_dir"
+  ],
+  "ops": [
+    "health"
+  ],
+  "health": {
+    "type": "http_get",
+    "url_from": "config.api_base_url",
+    "ok_status": [
+      200,
+      404
+    ]
+  }
+}

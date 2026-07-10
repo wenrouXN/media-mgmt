@@ -6,7 +6,21 @@ All commands assume the skill root:
 cd /path/to/media-mgmt
 ```
 
-Runtime defaults are in local `config.json`.
+Prefer `.venv/bin/python` when available. Runtime defaults: local `config.json`. Service catalog: `services/*.json`.
+
+## Control plane
+
+```bash
+.venv/bin/python scripts/media_ctl.py list
+.venv/bin/python scripts/media_ctl.py health
+.venv/bin/python scripts/media_ctl.py health moviepilot
+.venv/bin/python scripts/doctor.py
+.venv/bin/python scripts/media_ctl.py ops moviepilot
+.venv/bin/python scripts/media_ctl.py call moviepilot clients
+.venv/bin/python scripts/media_ctl.py call moviepilot identify --param title=金特务
+.venv/bin/python scripts/media_ctl.py call moviepilot status --param tmdbid=296206 --param episode=5
+.venv/bin/python scripts/media_ctl.py watch -- "金特务" --episode 5 --dry-run
+```
 
 ## 盘搜搜索
 

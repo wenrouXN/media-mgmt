@@ -1,0 +1,22 @@
+{
+  "id": "bilibili",
+  "name": "Bilibili downloader API",
+  "kind": "content_fetcher",
+  "description": "Parse/download Bilibili via local API",
+  "config_section": "bilibili",
+  "required_config": [
+    "api_base_url",
+    "download_dir"
+  ],
+  "ops": [
+    "health"
+  ],
+  "health": {
+    "type": "http_get",
+    "url_from": "config.api_base_url",
+    "ok_status": [
+      200,
+      404
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "qbittorrent",
+  "name": "qBittorrent (via MoviePilot)",
+  "kind": "downloader",
+  "description": "Downloader managed by MoviePilot name=QB",
+  "config_section": "moviepilot",
+  "depends_on": [
+    "moviepilot"
+  ],
+  "ops": [
+    "health",
+    "clients"
+  ],
+  "health": {
+    "type": "moviepilot_downloader",
+    "name": "QB"
+  }
+}

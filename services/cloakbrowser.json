@@ -1,0 +1,21 @@
+{
+  "id": "cloakbrowser",
+  "name": "CloakBrowser Manager",
+  "kind": "browser_runtime",
+  "description": "Anti-detect browser profile manager used by HDHive/checkin",
+  "config_section": "hdhive",
+  "required_config": [
+    "cloak_url"
+  ],
+  "ops": [
+    "health"
+  ],
+  "health": {
+    "type": "http_get",
+    "url_from": "config.cloak_url",
+    "path": "/api/profiles",
+    "ok_status": [
+      200
+    ]
+  }
+}

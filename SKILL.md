@@ -1,46 +1,65 @@
 ---
 name: media-mgmt
-description: "搜索影视资源、转存 115 分享、订阅 MoviePilot、解锁 HDHive、搜索并下载音乐/歌曲、解析下载抖音/Bilibili 视频。当用户说'我要看/找/下载/听'某部影视或歌曲，或发送抖音/Bilibili 链接时使用。"
+description: "管理媒体服务与接口（MoviePilot/下载器/HDHive/115/音乐/抖音/B站），搜索下载影视、转存分享、订阅、解锁资源。用户说'我要看/找/下载/听'或管理媒体服务时使用。"
 ---
 
 # 媒体资源管理
 
-Use when the user asks to search, transfer, subscribe, download, or unlock media resources.
+Use when managing media **services/APIs**, or when the user asks to search, transfer, subscribe, download, or unlock media.
+
+## Architecture（服务目录 + Ops + Workflow）
+
+```text
+services/*.json          # service catalog（无密钥：能力/探活/ops 列表）
+config.json              # 实例凭证与路径（gitignore）
+media_mgmt_lib/catalog   # 加载目录 + 合并 config section
+media_mgmt_lib/ops       # health + 每服务操作门面
+scripts/media_ctl.py     # 控制面：list / health / call / watch
+scripts/doctor.py        # 全服务探活
+scripts/watch.py         # workflow：我要看 X 第 N 集
+scripts/mp_api.py        # MoviePilot REST 底层客户端
+providers/*              # 同质获取源（TG 音乐 / 抖音 / B 站）
+```
+
+**不是**全盘内容 Provider。异构服务走 catalog+ops；下载源 provider 只覆盖同质 fetcher。
+
+## Control plane（优先）
+
+```bash
+cd /path/to/media-mgmt
+.venv/bin/python scripts/media_ctl.py list
+.venv/bin/python scripts/media_ctl.py health
+.venv/bin/python scripts/doctor.py
+.venv/bin/python scripts/media_ctl.py call moviepilot clients
+.venv/bin/python scripts/media_ctl.py call moviepilot identify --param title=金特务
+.venv/bin/python scripts/media_ctl.py watch -- "片名" --episode 5 --yes
+```
 
 ## Default intent
 
+- 先问服务是否健康 → `doctor` / `media_ctl health`
 - 用户直接发 115 分享链接+密码 → 自动转存到 MoviePilot P115StrmHelper，无需二次确认。
-- 用户要找影视资源 → **优先一条命令** `scripts/watch.py`；不要手搓 MoviePilot JSON。
-- 用户要订阅影视 → 先下载已有资源；确认未完结后再用 MoviePilot REST API 创建/更新订阅。
-- 用户要下歌/音乐 → 用 Telegram Music provider，默认下载目录来自 `config.json`。
+- 用户要找影视资源 → **workflow** `scripts/watch.py`（或 `media_ctl watch -- ...`）；不要手搓 MoviePilot JSON。
+- 用户要订阅影视 → 先下载已有资源；确认未完结后再创建/更新订阅。
+- 用户要下歌/音乐 → Telegram Music provider，目录来自 `config.json`。
 
 ## Config
 
-Runtime defaults live in local `config.json` at skill root. Public template: `config.example.json`.
+- **服务元数据**：`services/<id>.json`（可入库）
+- **运行时凭证**：本地 `config.json`（gitignore）。模板：`config.example.json`
+- section 名与 service `config_section` 对齐：`moviepilot` / `hdhive` / `pansou` / `telegram_music` / `douyin` / `bilibili`
 
-**Do not read config files before calling scripts.** All scripts load their own config via `load_json_config()` internally. Just call the script directly; if config is missing or wrong, the script will report the error.
-
-Main sections:
-
-- `pansou.url`
-- `moviepilot.base_url`, `moviepilot.api_key`
-- `hdhive.cloak_url`, `hdhive.profile_name`, optional `hdhive.profile_id`
-- `telegram_music.api_id`, `telegram_music.api_hash`, `telegram_music.session_string` or `session_name`, `telegram_music.bot`, `telegram_music.download_dir`
-- `douyin.api_base_url`, `douyin.download_dir`, `douyin.timeout`
-- `bilibili.api_base_url`, `bilibili.download_dir`, `bilibili.quality`, `bilibili.timeout`
+**Do not read config files before calling scripts.** Scripts load config themselves.
 
 ## Anti-detour checklist（强制）
 
 1. **不要先读 config.json** — 直接跑脚本。
-2. **不要猜有没有下载器** — `GET /api/v1/download/` 是**进行中任务**；空列表 ≠ 未配置。查客户端用：
-   - `python3 scripts/mp_api.py clients`
-   - 或 `GET /api/v1/download/clients`
-3. **不要手搓残缺 download body** — 用：
-   - `python3 scripts/watch.py "片名" --episode N --yes`
-   - 或 `mp_api.py download --from-search-result ... --media-json ...`
-4. **必须透传完整 `torrent_info`**（含 `enclosure` / `site_name` / cookie 字段）+ 完整 `media_info`（`type`/`title`/`tmdb_id`）。
-5. **新剧搜索 fallback**：`search/media/tmdb:id` 可能为空 → 立刻 title 搜 / 加 `SxxExx`，不要空转。
-6. **完成判定**：active 空了要查 `history/transfer`，不要只看 download list。
+2. **先 doctor / clients** — 空的 `GET /api/v1/download/` 只表示无进行中任务，≠ 未配置下载器。
+   - `media_ctl call moviepilot clients` 或 `mp_api.py clients`
+3. **不要手搓残缺 download body** — 用 `watch.py` 或 `mp_api.py download --from-search-result`
+4. **完整 `torrent_info` + `media_info`**（enclosure / tmdb_id 等）
+5. **新剧搜索 fallback**：tmdb 搜空 → title / `SxxExx`
+6. **完成判定**：查 `history/transfer`，不要只看 download list。
 
 ## Workflows
 

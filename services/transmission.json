@@ -1,0 +1,18 @@
+{
+  "id": "transmission",
+  "name": "Transmission (via MoviePilot)",
+  "kind": "downloader",
+  "description": "Downloader managed by MoviePilot name=TR",
+  "config_section": "moviepilot",
+  "depends_on": [
+    "moviepilot"
+  ],
+  "ops": [
+    "health",
+    "clients"
+  ],
+  "health": {
+    "type": "moviepilot_downloader",
+    "name": "TR"
+  }
+}

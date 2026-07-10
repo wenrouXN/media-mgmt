@@ -1,0 +1,32 @@
+{
+  "id": "moviepilot",
+  "name": "MoviePilot",
+  "kind": "media_orchestrator",
+  "description": "Media identify/search/download/subscribe/transfer via REST",
+  "config_section": "moviepilot",
+  "required_config": [
+    "base_url",
+    "api_key"
+  ],
+  "ops": [
+    "health",
+    "clients",
+    "active",
+    "identify",
+    "search",
+    "download",
+    "status",
+    "subscribe"
+  ],
+  "health": {
+    "type": "http_get",
+    "path": "/api/v1/system/env",
+    "auth": "apikey_query",
+    "ok_status": [
+      200
+    ]
+  },
+  "endpoints": {
+    "base_from": "config.base_url"
+  }
+}

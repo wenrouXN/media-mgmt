@@ -1,0 +1,22 @@
+{
+  "id": "hdhive",
+  "name": "HDHive",
+  "kind": "resource_site",
+  "description": "Unlock 115 share links via CloakBrowser CDP",
+  "config_section": "hdhive",
+  "required_config": [
+    "cloak_url",
+    "profile_name"
+  ],
+  "ops": [
+    "health",
+    "search",
+    "unlock"
+  ],
+  "health": {
+    "type": "cloak_profile",
+    "url_key": "cloak_url",
+    "profile_id_key": "profile_id",
+    "profile_name_key": "profile_name"
+  }
+}

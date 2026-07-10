@@ -1,0 +1,20 @@
+{
+  "id": "telegram_music",
+  "name": "Telegram Music Bot",
+  "kind": "content_fetcher",
+  "description": "Search/download music via Telegram bot",
+  "config_section": "telegram_music",
+  "required_config": [
+    "api_id",
+    "api_hash",
+    "bot",
+    "download_dir"
+  ],
+  "ops": [
+    "health",
+    "search_download"
+  ],
+  "health": {
+    "type": "config_present"
+  }
+}

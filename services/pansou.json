@@ -1,0 +1,23 @@
+{
+  "id": "pansou",
+  "name": "PanSou",
+  "kind": "search_gateway",
+  "description": "Pan search gateway",
+  "config_section": "pansou",
+  "required_config": [
+    "url"
+  ],
+  "ops": [
+    "health"
+  ],
+  "health": {
+    "type": "http_get",
+    "url_from": "config.url",
+    "ok_status": [
+      200,
+      301,
+      302,
+      404
+    ]
+  }
+}

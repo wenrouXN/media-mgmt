@@ -64,12 +64,30 @@ def call_op(service_id: str, op_name: str, params: dict[str, Any] | None = None)
 
 
 def list_ops(service_id: str | None = None) -> dict[str, Any]:
+    def _implemented(sid: str, declared: list[str]) -> list[str]:
+        names = set((_OPS.get(sid) or {}).keys())
+        names.add("health")
+        return sorted(n for n in names if n == "health" or n in declared)
+
     if service_id:
         svc = load_service(service_id)
-        implemented = sorted(set(list((_OPS.get(service_id) or {}).keys()) + (["health"] if "health" in (svc.ops or []) or True else [])))
+        impl = _implemented(service_id, list(svc.ops or []))
+        missing = sorted(set(svc.ops or []) - set(impl))
         return {
             "service": service_id,
             "ops": svc.ops,
-            "implemented": implemented,
+            "implemented": impl,
+            "missing": missing,
+            "complete": not missing,
         }
-    return {s.id: {"ops": s.ops, "implemented": sorted(set(list((_OPS.get(s.id) or {}).keys()) + ["health"]))} for s in load_catalog()}
+    out: dict[str, Any] = {}
+    for s in load_catalog():
+        impl = _implemented(s.id, list(s.ops or []))
+        missing = sorted(set(s.ops or []) - set(impl))
+        out[s.id] = {
+            "ops": s.ops,
+            "implemented": impl,
+            "missing": missing,
+            "complete": not missing,
+        }
+    return out

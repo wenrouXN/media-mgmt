@@ -11,7 +11,9 @@
   "ops": [
     "health",
     "search",
-    "unlock"
+    "resources",
+    "unlock",
+    "grab"
   ],
   "health": {
     "type": "cloak_profile",

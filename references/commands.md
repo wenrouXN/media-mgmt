@@ -19,6 +19,15 @@ Prefer `.venv/bin/python` when available. Runtime defaults: local `config.json`.
 .venv/bin/python scripts/media_ctl.py call moviepilot clients
 .venv/bin/python scripts/media_ctl.py call moviepilot identify --param title=金特务
 .venv/bin/python scripts/media_ctl.py call moviepilot status --param tmdbid=296206 --param episode=5
+.venv/bin/python scripts/media_ctl.py call moviepilot subscribe --param action=get --param tmdbid=296206
+.venv/bin/python scripts/media_ctl.py call moviepilot transfer_share --param share_url='https://115.com/s/xxx?password=yyy'
+.venv/bin/python scripts/media_ctl.py call hdhive search --param q=金特务
+.venv/bin/python scripts/media_ctl.py call hdhive unlock --param url='https://hdhive.com/...'
+.venv/bin/python scripts/media_ctl.py call pansou search --param q=关键词
+.venv/bin/python scripts/media_ctl.py call douyin parse --param url='https://v.douyin.com/...'
+.venv/bin/python scripts/media_ctl.py call bilibili parse --param url='https://www.bilibili.com/video/...'
+.venv/bin/python scripts/media_ctl.py call telegram_music search_download --param q=歌名
+.venv/bin/python scripts/media_ctl.py call cloakbrowser list_profiles
 .venv/bin/python scripts/media_ctl.py watch -- "金特务" --episode 5 --dry-run
 ```
 

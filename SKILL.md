@@ -32,8 +32,14 @@ cd /path/to/media-mgmt
 .venv/bin/python scripts/doctor.py
 .venv/bin/python scripts/media_ctl.py call moviepilot clients
 .venv/bin/python scripts/media_ctl.py call moviepilot identify --param title=金特务
+.venv/bin/python scripts/media_ctl.py call moviepilot transfer_share --param share_url='https://115.com/s/xxx?password=yyy'
+.venv/bin/python scripts/media_ctl.py call hdhive search --param q=金特务
+.venv/bin/python scripts/media_ctl.py call pansou search --param q=关键词
+.venv/bin/python scripts/media_ctl.py call cloakbrowser list_profiles
 .venv/bin/python scripts/media_ctl.py watch -- "片名" --episode 5 --yes
 ```
+
+`media_ctl ops` / `media_ctl ops <service>` 查看声明与实现是否齐套。
 
 ## Default intent
 

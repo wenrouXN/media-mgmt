@@ -8,7 +8,8 @@
     "url"
   ],
   "ops": [
-    "health"
+    "health",
+    "search"
   ],
   "health": {
     "type": "http_get",

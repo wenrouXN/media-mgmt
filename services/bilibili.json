@@ -9,7 +9,9 @@
     "download_dir"
   ],
   "ops": [
-    "health"
+    "health",
+    "parse",
+    "download"
   ],
   "health": {
     "type": "http_get",

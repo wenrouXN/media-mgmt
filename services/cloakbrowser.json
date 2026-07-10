@@ -8,7 +8,9 @@
     "cloak_url"
   ],
   "ops": [
-    "health"
+    "health",
+    "list_profiles",
+    "profile_status"
   ],
   "health": {
     "type": "http_get",

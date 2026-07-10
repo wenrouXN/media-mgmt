@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# register built-in ops
-import media_mgmt_lib.ops.moviepilot  # noqa: F401
-from media_mgmt_lib.catalog import catalog_summary, list_service_ids, load_service
+# register all built-in ops
+import media_mgmt_lib.ops.bootstrap  # noqa: F401
+from media_mgmt_lib.catalog import catalog_summary, load_service
 from media_mgmt_lib.ops import call_op, list_ops
 from media_mgmt_lib.ops.health import check_all, check_service
 

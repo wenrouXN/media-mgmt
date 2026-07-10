@@ -16,7 +16,9 @@
     "search",
     "download",
     "status",
-    "subscribe"
+    "subscribe",
+    "paths",
+    "transfer_share"
   ],
   "health": {
     "type": "http_get",

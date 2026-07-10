@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from media_mgmt_lib.workflows import doctor as w_doctor
+from media_mgmt_lib.workflows import identify as w_identify
 from media_mgmt_lib.workflows import watch as w_watch
 from media_mgmt_lib.workflows import link as w_link
 from media_mgmt_lib.workflows import share115 as w_share115
@@ -20,6 +21,12 @@ from media_mgmt_lib.workflows import retry as w_retry
 WorkflowFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 REGISTRY: dict[str, dict[str, Any]] = {
+    "identify": {
+        "fn": w_identify.run,
+        "summary": "先认片：title→tmdb_id（可多候选确认；默认识别后停下）",
+        "need": ["title|tmdbid"],
+        "fixed": True,
+    },
     "watch": {
         "fn": w_watch.run,
         "summary": "我要看 X 第 N 集：识别→搜→选→下→状态",

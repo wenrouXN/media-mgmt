@@ -44,6 +44,7 @@ cd /path/to/media-mgmt
 
 | name | 场景 |
 |------|------|
+| identify | 先认片定 tmdb_id |
 | watch | 我要看 X 第 N 集 |
 | link | 短视频/B站链接 + 意图 |
 | share115 | 115 分享转存 |
@@ -77,7 +78,8 @@ cd /path/to/media-mgmt
 
 - 先问服务是否健康 → `doctor` / `media_ctl health`
 - 用户直接发 115 分享链接+密码 → `media_ctl run share115`（自动转存，无需二次确认）。
-- 用户要找/看影视 → `media_ctl run watch`；不要手搓 MoviePilot JSON。
+- 模糊片名先 `media_ctl run identify` 定 tmdb_id，确认后再 search/watch。
+- 用户要找/看影视 → `media_ctl run watch`（内部也会 identify）；不要手搓 MoviePilot JSON。
 - 「库里有没有 / 有没有更新」→ `run library` / `run updates`。
 - 「是不是重复、留哪个」→ `run duplicates`（只建议，不自动删）。
 - 用户要订阅影视 → `run subscribe`；先下已有资源，未完结再订。

@@ -11,6 +11,7 @@
 
 | name | 触发 | 必参 | 行为 |
 |------|------|------|------|
+| identify | 这是哪部 / 先定 tmdbid | title\|tmdbid | 认片返回 tmdb_id+候选；默认**不搜不下载** |
 | watch | 我要看 X 第 N 集 | title | identify→搜→选→下→状态 |
 | link | 抖音/B站/TikTok 链接 | url | hybrid intent 分流 |
 | share115 | 115 分享链(+密码) | share_url | transfer_share，已转存也算成功 |
@@ -24,6 +25,22 @@
 | duplicates | 是否重复、留哪个 | title\|tmdbid | 按 SxxExx 分组，建议 keep；**不自动删** |
 | hdhive | HDHive 资源 | q\|title | grab（可 transfer） |
 | retry | 失败换源 | title | search；auto=true 再 watch |
+
+## 先定 tmdbid（推荐搜源前）
+
+```bash
+# 只认片，停下给你确认
+.venv/bin/python scripts/media_ctl.py run identify --param title=金特务
+
+# 多候选时选第 N 个
+.venv/bin/python scripts/media_ctl.py run identify --param title=金特务 --param select=2
+
+# 确认后继续搜（仍不下）/ 直接看
+.venv/bin/python scripts/media_ctl.py run identify --param title=金特务 --param continue_to=search
+.venv/bin/python scripts/media_ctl.py run identify --param tmdbid=296206 --param continue_to=watch --param episode=5 --param dry_run=true
+```
+
+Agent 规则：模糊片名先 `run identify`，确认 `tmdb_id` 后再 `search`/`watch`。
 
 ## 你关心的库/更新/重复
 

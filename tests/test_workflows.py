@@ -5,6 +5,7 @@ from media_mgmt_lib.workflows import list_workflows, run_workflow
 
 
 REQUIRED = {
+    "identify",
     "watch",
     "link",
     "share115",
@@ -19,6 +20,14 @@ REQUIRED = {
     "hdhive",
     "retry",
 }
+
+
+def test_identify_resolves_tmdbid():
+    r = run_workflow("identify", {"title": "金特务"})
+    assert r.get("success") is True
+    assert r.get("tmdb_id") == 296206
+    assert r.get("selected", {}).get("title")
+    assert "candidates" in r
 
 
 def test_all_fixed_workflows_registered():

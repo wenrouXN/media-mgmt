@@ -1,9 +1,86 @@
 #!/usr/bin/env python3
 """HDHive provider: search resources and unlock 115 share links via CDP."""
 
-import json, asyncio, sys, urllib.request
+import json, asyncio, sys, urllib.request, re
 from typing import Any
 import websockets
+
+# 115 share URLs may appear as 115.com or 115cdn.com; DOM often masks password as ***
+# while HTML source still contains the real password query value.
+_SHARE_URL_RE = re.compile(
+    r"https?://(?:www\.)?115(?:cdn)?\.com/s/([A-Za-z0-9]+)(?:\?([^\"'\s<>]*))?",
+    re.I,
+)
+_PASSWORD_RE = re.compile(r"(?:^|[?&])password=([^&\"'\s<>]+)", re.I)
+_MASK = "*" * 3
+
+
+def recover_masked_115_share(raw: str, html_src: str | None = None) -> str | None:
+    """Recover a plaintext 115 share URL when DOM masks password as ***.
+
+    Strategy:
+    1) Prefer a full share URL found in HTML that already has a non-masked password.
+    2) Else take a real password from HTML and rewrite only the password= segment of raw.
+    Never do a global replace of '***' (share id can also be masked).
+    """
+    if not raw or "/s/" not in raw:
+        return None
+    if _MASK not in raw:
+        return raw
+
+    sources = [html_src or "", raw]
+
+    def _password_from_text(text: str | None) -> str | None:
+        if not text:
+            return None
+        candidates = [text]
+        if not text.startswith("?") and not text.startswith("password="):
+            candidates.append("?" + text)
+            candidates.append("password=" + text)
+        for cand in candidates:
+            m = _PASSWORD_RE.search(cand)
+            if not m:
+                continue
+            val = m.group(1)
+            if val and _MASK not in val:
+                return val
+        return None
+
+    # 1) full URL with real password in HTML/source
+    for src in sources:
+        for m in _SHARE_URL_RE.finditer(src):
+            share_id = m.group(1)
+            if not share_id or _MASK in share_id:
+                continue
+            val = _password_from_text(m.group(2)) or _password_from_text(m.group(0))
+            if val:
+                host = "115cdn.com" if "115cdn.com" in m.group(0).lower() else "115.com"
+                return "https://" + host + "/s/" + share_id + "?" + "password=" + val
+
+    # 2) any real password= value in HTML, rewrite only that segment of raw
+    real_pwd = None
+    for src in sources:
+        for m in _PASSWORD_RE.finditer(src):
+            val = m.group(1)
+            if val and _MASK not in val:
+                real_pwd = val
+                break
+        if real_pwd:
+            break
+    if not real_pwd:
+        return None
+
+    rewritten, n = re.subn(
+        r"(password=)([^&]*)",
+        lambda m: m.group(1) + real_pwd,
+        raw,
+        count=1,
+        flags=re.I,
+    )
+    if n and _MASK not in rewritten:
+        return rewritten
+    return None
+
 
 from media_mgmt_lib.config import section, load_json_config
 
@@ -311,10 +388,21 @@ async def unlock_share(resource_url):
         if "/s/" in cur_url and "password=" in cur_url and "***" not in cur_url:
             return cur_url
 
-        # 如果 URL 中密码为 ***，尝试取页面中的链接
+        # 如果 URL 中password被遮蔽，尝试取页面中的链接并恢复明文
         raw = await val(ws, """document.querySelector('a[href*="115.com/s/"], a[href*="115cdn.com/s/"]')?.href || ''""")
-        if raw and "/s/" in raw and "***" not in raw:
+        if raw and "/s/" in raw and _MASK not in raw:
             return raw
+
+        # DOM 常遮蔽 password，HTML 源码中可能仍有真实值
+        if raw and "/s/" in raw and _MASK in raw:
+            html_src = await val(ws, "document.documentElement.outerHTML")
+            recovered = recover_masked_115_share(raw, html_src)
+            if recovered:
+                return recovered
+            cur_url2 = await val(ws, "location.href")
+            recovered = recover_masked_115_share(cur_url2 or "", html_src)
+            if recovered:
+                return recovered
 
         # 兜底：如果还是 ***，可能是115协议确认页被弹窗遮挡
         # 再次检查并点击可能的确认按钮

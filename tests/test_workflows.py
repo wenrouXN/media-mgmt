@@ -16,10 +16,23 @@ REQUIRED = {
     "subscribe",
     "library",
     "updates",
+    "schedule",
+    "catchup",
     "duplicates",
     "hdhive",
     "retry",
 }
+
+
+def test_schedule_and_catchup_plan_live():
+    sch = run_workflow("schedule", {"tmdbid": 296206, "title": "金特务：本色回归"})
+    assert sch.get("success") is True
+    assert "aired" in sch and "upcoming" in sch
+    plan = run_workflow("catchup", {"tmdbid": 296206, "title": "金特务：本色回归", "dry_run": True})
+    assert plan.get("success") is True
+    assert "plan" in plan
+    assert "download_now" in plan["plan"]
+    assert "subscribe_for" in plan["plan"]
 
 
 def test_identify_resolves_tmdbid():

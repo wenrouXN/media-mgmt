@@ -14,6 +14,8 @@ from media_mgmt_lib.workflows import status as w_status
 from media_mgmt_lib.workflows import subscribe as w_subscribe
 from media_mgmt_lib.workflows import library as w_library
 from media_mgmt_lib.workflows import updates as w_updates
+from media_mgmt_lib.workflows import schedule as w_schedule
+from media_mgmt_lib.workflows import catchup as w_catchup
 from media_mgmt_lib.workflows import duplicates as w_duplicates
 from media_mgmt_lib.workflows import hdhive as w_hdhive
 from media_mgmt_lib.workflows import retry as w_retry
@@ -83,7 +85,19 @@ REGISTRY: dict[str, dict[str, Any]] = {
     },
     "updates": {
         "fn": w_updates.run,
-        "summary": "某某有更新吗：库内缺集 + 订阅状态",
+        "summary": "有没有更新：库缺集 + TMDB档期 + 已播可下/未播改订计划",
+        "need": ["title|tmdbid"],
+        "fixed": True,
+    },
+    "schedule": {
+        "fn": w_schedule.run,
+        "summary": "TMDB 播出日历：已播/未播/下一集日期",
+        "need": ["title|tmdbid"],
+        "fixed": True,
+    },
+    "catchup": {
+        "fn": w_catchup.run,
+        "summary": "追更计划：已播缺集先下，未播订阅（execute=true 才执行）",
         "need": ["title|tmdbid"],
         "fixed": True,
     },

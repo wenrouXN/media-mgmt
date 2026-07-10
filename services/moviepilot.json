@@ -25,7 +25,10 @@
     "download_history",
     "subscribe_list",
     "mediaserver_clients",
-    "library_latest"
+    "library_latest",
+    "media_detail",
+    "tmdb_episodes",
+    "schedule"
   ],
   "health": {
     "type": "http_get",

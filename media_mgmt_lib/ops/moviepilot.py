@@ -325,3 +325,188 @@ register_op("moviepilot", "download_history", op_download_history)
 register_op("moviepilot", "subscribe_list", op_subscribe_list)
 register_op("moviepilot", "mediaserver_clients", op_mediaserver_clients)
 register_op("moviepilot", "library_latest", op_library_latest)
+
+
+
+def _mp_get(cfg: dict[str, Any], path: str, params: dict[str, Any] | None = None, timeout: float = 45.0) -> Any:
+    import json as _json
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    from media_mgmt_lib.config import load_json_config, moviepilot_credentials
+
+    creds = moviepilot_credentials(cfg if cfg else load_json_config())
+    if not creds:
+        raise RuntimeError("missing_moviepilot_config")
+    q = {"apikey": creds["API_KEY"]}
+    for k, v in (params or {}).items():
+        if v is not None and v != "":
+            q[k] = v
+    url = f"{creds['BASE_URL'].rstrip('/')}{path}?{urllib.parse.urlencode(q, doseq=True)}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+            return _json.loads(raw) if raw else None
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace") if hasattr(e, "read") else str(e)
+        raise RuntimeError(f"http_{e.code}:{body[:300]}") from e
+
+
+def _normalize_media_type(v: Any) -> str:
+    s = str(v or "电视剧")
+    if s.lower() in {"tv", "show", "series"}:
+        return "电视剧"
+    if s.lower() in {"movie", "film"}:
+        return "电影"
+    return s
+
+
+def op_media_detail(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """TMDB/media detail via GET /api/v1/media/tmdb:{id}?type_name=..."""
+    tmdbid = params.get("tmdbid") or params.get("tmdb_id")
+    title = params.get("title")
+    mtype = _normalize_media_type(params.get("type_name") or params.get("media_type") or params.get("mtype") or "电视剧")
+    if not tmdbid:
+        if not title:
+            return {"success": False, "error": "missing_param", "need": "tmdbid|title"}
+        identified = op_identify(svc, cfg, {"title": title, "media_type": mtype, "year": params.get("year")})
+        selected = identified.get("selected") if isinstance(identified, dict) else None
+        if not isinstance(selected, dict):
+            return {"success": False, "error": "identify_failed", "detail": identified}
+        tmdbid = selected.get("tmdb_id") or selected.get("tmdbid")
+        mtype = _normalize_media_type(selected.get("type") or mtype)
+        title = selected.get("title") or title
+    try:
+        detail = _mp_get(cfg, f"/api/v1/media/tmdb:{tmdbid}", {"type_name": mtype})
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": "media_detail_failed", "detail": str(e)}
+    if not isinstance(detail, dict) or not (detail.get("tmdb_id") or detail.get("title")):
+        return {"success": False, "error": "empty_detail", "raw": detail}
+    next_ep = detail.get("next_episode_to_air") or {}
+    return {
+        "success": True,
+        "media": {
+            "title": detail.get("title") or title,
+            "tmdb_id": detail.get("tmdb_id") or int(tmdbid),
+            "type": detail.get("type") or mtype,
+            "year": detail.get("year"),
+            "status": detail.get("status"),
+            "number_of_episodes": detail.get("number_of_episodes"),
+            "number_of_seasons": detail.get("number_of_seasons"),
+            "first_air_date": detail.get("first_air_date") or detail.get("release_date"),
+            "last_air_date": detail.get("last_air_date"),
+        },
+        "next_episode_to_air": next_ep if next_ep else None,
+        "season_info": detail.get("season_info") or [],
+        "seasons_map": detail.get("seasons") or {},
+        "detail": detail,
+        "summary": (
+            f"《{detail.get('title')}》 status={detail.get('status')}"
+            + (
+                f"；下一集 S{next_ep.get('season_number')}E{next_ep.get('episode_number')} @ {next_ep.get('air_date')}"
+                if isinstance(next_ep, dict) and next_ep.get("air_date")
+                else ""
+            )
+        ),
+    }
+
+
+def op_tmdb_episodes(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """All episodes of a season: GET /api/v1/tmdb/{tmdbid}/{season}"""
+    tmdbid = params.get("tmdbid") or params.get("tmdb_id")
+    season = int(params.get("season") or 1)
+    if not tmdbid:
+        return {"success": False, "error": "missing_param", "need": "tmdbid"}
+    try:
+        eps = _mp_get(cfg, f"/api/v1/tmdb/{tmdbid}/{season}")
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": "tmdb_episodes_failed", "detail": str(e)}
+    if not isinstance(eps, list):
+        return {"success": False, "error": "unexpected_response", "raw": eps}
+    compact = []
+    for ep in eps:
+        if not isinstance(ep, dict):
+            continue
+        compact.append(
+            {
+                "season": season,
+                "episode": ep.get("episode_number"),
+                "name": ep.get("name"),
+                "air_date": ep.get("air_date"),
+                "runtime": ep.get("runtime"),
+                "overview": (ep.get("overview") or "")[:160] or None,
+            }
+        )
+    return {
+        "success": True,
+        "tmdb_id": int(tmdbid),
+        "season": season,
+        "episodes": compact,
+        "count": len(compact),
+        "summary": f"S{season:02d}: {len(compact)} episodes",
+    }
+
+
+def op_schedule(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """Classify episodes into aired vs upcoming using TMDB air_date + today."""
+    from datetime import date, datetime
+
+    detail = op_media_detail(svc, cfg, params)
+    if not detail.get("success"):
+        return detail
+    media = detail.get("media") or {}
+    tmdbid = media.get("tmdb_id")
+    season = int(params.get("season") or 1)
+    eps_res = op_tmdb_episodes(svc, cfg, {"tmdbid": tmdbid, "season": season})
+    if not eps_res.get("success"):
+        return eps_res
+    today = date.today()
+    # optional as_of override YYYY-MM-DD for tests
+    if params.get("as_of"):
+        today = date.fromisoformat(str(params["as_of"]))
+    aired = []
+    upcoming = []
+    unknown = []
+    for ep in eps_res.get("episodes") or []:
+        ad = ep.get("air_date")
+        item = dict(ep)
+        if not ad:
+            item["state"] = "unknown"
+            unknown.append(item)
+            continue
+        try:
+            d = date.fromisoformat(str(ad)[:10])
+        except ValueError:
+            item["state"] = "unknown"
+            unknown.append(item)
+            continue
+        if d <= today:
+            item["state"] = "aired"
+            aired.append(item)
+        else:
+            item["state"] = "upcoming"
+            upcoming.append(item)
+    next_up = upcoming[0] if upcoming else None
+    next_ep = detail.get("next_episode_to_air")
+    return {
+        "success": True,
+        "media": media,
+        "season": season,
+        "today": today.isoformat(),
+        "aired": aired,
+        "upcoming": upcoming,
+        "unknown": unknown,
+        "aired_count": len(aired),
+        "upcoming_count": len(upcoming),
+        "next_upcoming": next_up,
+        "next_episode_to_air": next_ep,
+        "summary": (
+            f"《{media.get('title')}》S{season}: 已播 {len(aired)} / 未播 {len(upcoming)}"
+            + (f"；下集 E{next_up.get('episode')} @ {next_up.get('air_date')}" if next_up else "")
+        ),
+    }
+
+
+register_op("moviepilot", "media_detail", op_media_detail)
+register_op("moviepilot", "tmdb_episodes", op_tmdb_episodes)
+register_op("moviepilot", "schedule", op_schedule)

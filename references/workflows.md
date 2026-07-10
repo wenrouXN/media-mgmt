@@ -21,10 +21,27 @@
 | status | 下好了吗/路径 | title\|tmdbid | status + transfer_history |
 | subscribe | 订阅查/建 | title\|tmdbid | action=check\|create\|list |
 | library | 库里有没有 | title\|tmdbid | mediaserver exists + 缺集 |
-| updates | 有没有更新 | title\|tmdbid | library + missing_episodes + 订阅缺集 |
+| updates | 有没有更新 | title\|tmdbid | 库缺集 + TMDB档期 + 已播可下/未播改订 |
+| schedule | 播出日历 | title\|tmdbid | aired/upcoming/next air_date |
+| catchup | 追更计划/执行 | title\|tmdbid | 已播缺集先下，未播订阅 |
 | duplicates | 是否重复、留哪个 | title\|tmdbid | 按 SxxExx 分组，建议 keep；**不自动删** |
 | hdhive | HDHive 资源 | q\|title | grab（可 transfer） |
 | retry | 失败换源 | title | search；auto=true 再 watch |
+
+## 追更（已播下 / 未播订）
+
+```bash
+# 只看计划
+.venv/bin/python scripts/media_ctl.py run catchup --param tmdbid=296206 --param title=金特务：本色回归
+
+# 执行：下已播缺集 + 建订阅
+.venv/bin/python scripts/media_ctl.py run catchup --param tmdbid=296206 --param execute=true --param max_download=3
+
+# 日历
+.venv/bin/python scripts/media_ctl.py run schedule --param tmdbid=296206
+```
+
+`updates` 已内嵌 catchup 计划（不执行）。
 
 ## 听歌候选策略
 

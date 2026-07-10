@@ -15,7 +15,7 @@
 | watch | 我要看 X 第 N 集 | title | identify→搜→选→下→状态 |
 | link | 抖音/B站/TikTok 链接 | url | hybrid intent 分流 |
 | share115 | 115 分享链(+密码) | share_url | transfer_share，已转存也算成功 |
-| listen | 听/下 歌名 | q | telegram_music search_download |
+| listen | 听/下 歌名 | q | 搜候选打分；高置信自动下，多选必须确认 |
 | doctor | 媒体挂了吗 | — | 全服务探活 |
 | search | 有没有资源（只搜） | title\|tmdbid | identify + search + pick，不下 |
 | status | 下好了吗/路径 | title\|tmdbid | status + transfer_history |
@@ -25,6 +25,24 @@
 | duplicates | 是否重复、留哪个 | title\|tmdbid | 按 SxxExx 分组，建议 keep；**不自动删** |
 | hdhive | HDHive 资源 | q\|title | grab（可 transfer） |
 | retry | 失败换源 | title | search；auto=true 再 watch |
+
+## 听歌候选策略
+
+```bash
+# 只列候选
+.venv/bin/python scripts/media_ctl.py run listen --param q='晴天 周杰伦' --param search_only=true
+
+# 策略下载：高置信直接下；多选返回 needs_confirm + candidates
+.venv/bin/python scripts/media_ctl.py run listen --param q='晴天 周杰伦'
+
+# 用户确认后
+.venv/bin/python scripts/media_ctl.py run listen --param q='晴天 周杰伦' --param button_index=2
+
+# 强制头名（不推荐默认）
+.venv/bin/python scripts/media_ctl.py run listen --param q='晴天' --param force=true
+```
+
+规则：`exact` / 单候选 / top 分高且与第二名分差大 → auto；否则必须确认。
 
 ## 先定 tmdbid（推荐搜源前）
 

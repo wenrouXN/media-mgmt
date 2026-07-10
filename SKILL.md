@@ -83,7 +83,7 @@ cd /path/to/media-mgmt
 - 「库里有没有 / 有没有更新」→ `run library` / `run updates`。
 - 「是不是重复、留哪个」→ `run duplicates`（只建议，不自动删）。
 - 用户要订阅影视 → `run subscribe`；先下已有资源，未完结再订。
-- 用户要下歌/音乐 → `run listen`。
+- 用户要下歌/音乐 → `run listen`（高置信直接下，多选需确认；`button_index` 确认后下）。
 - 抖音/B站/TikTok 链接 → `run link`（intent=下载/解析/评论…）。
 
 ## Config

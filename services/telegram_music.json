@@ -2,7 +2,7 @@
   "id": "telegram_music",
   "name": "Telegram Music Bot",
   "kind": "content_fetcher",
-  "description": "Search/download music via Telegram bot",
+  "description": "Search/download music via Telegram bot with candidate ranking and confirm policy",
   "config_section": "telegram_music",
   "required_config": [
     "api_id",
@@ -12,6 +12,8 @@
   ],
   "ops": [
     "health",
+    "search",
+    "download",
     "search_download"
   ],
   "health": {

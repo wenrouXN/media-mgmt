@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from pathlib import Path
 from typing import Any
 
+from media_mgmt_lib.music_pick import decide_auto_download, rank_candidates
 from media_mgmt_lib.provider_base import ProviderRunRequest
 
 try:
@@ -44,13 +44,25 @@ def extract_callback_buttons(reply_markup: Any) -> list[dict[str, Any]]:
     return buttons
 
 
-def resolve_button_choice(buttons: list[dict[str, Any]], *, button_index: int = 1, button_text: str | None = None) -> dict[str, Any]:
+def resolve_button_choice(
+    buttons: list[dict[str, Any]],
+    *,
+    button_index: int = 1,
+    button_text: str | None = None,
+) -> dict[str, Any]:
     if not buttons:
         raise RuntimeError("No callback buttons found on result message")
 
     if button_text:
         for btn in buttons:
             if btn.get("text") == button_text:
+                return btn
+        # fuzzy: normalized contains
+        from media_mgmt_lib.music_pick import normalize_text
+
+        target = normalize_text(button_text)
+        for btn in buttons:
+            if target and target in normalize_text(str(btn.get("text") or "")):
                 return btn
         raise RuntimeError(f"Button text not found: {button_text}")
 
@@ -128,7 +140,59 @@ def infer_download_filename(file_msg: Any) -> str:
 class TelegramMusicProvider:
     provider_name = "telegram_music"
 
-    async def run(self, request: ProviderRunRequest) -> Path:
+    async def search_candidates(self, request: ProviderRunRequest) -> dict[str, Any]:
+        """Send /search and return ranked button candidates (no download)."""
+        ensure_runtime_dependencies()
+        api_id, api_hash, session_string, session_name = load_creds(request)
+        client = build_client(api_id, api_hash, session_string, session_name)
+        await client.start()
+        try:
+            baseline = await client.get_messages(request.bot, limit=1)
+            last_id = baseline[0].id if baseline else 0
+            search_message = build_search_message(request.query)
+            await client.send_message(request.bot, search_message)
+            result_msg = await wait_for_new_bot_message_with_buttons(
+                client, request.bot, last_id, request.search_timeout, request.poll_interval
+            )
+            buttons = extract_callback_buttons(result_msg.reply_markup)
+            ranked = rank_candidates(request.query, buttons)
+            decision = decide_auto_download(request.query, ranked)
+            # strip raw callback data from public candidates if bytes-like noise; keep index/text/score
+            public = []
+            for c in ranked:
+                public.append(
+                    {
+                        "index": c["index"],
+                        "text": c["text"],
+                        "score": c["score"],
+                        "exact": c.get("exact"),
+                        "token_coverage": c.get("token_coverage"),
+                        "reasons": c.get("reasons"),
+                    }
+                )
+            return {
+                "success": True,
+                "query": request.query,
+                "bot": request.bot,
+                "result_message_id": result_msg.id,
+                "result_text": (result_msg.message or result_msg.text or "")[:500],
+                "candidates": public,
+                "candidate_count": len(public),
+                "decision": {
+                    "auto": decision.get("auto"),
+                    "needs_confirm": decision.get("needs_confirm"),
+                    "confidence": decision.get("confidence"),
+                    "reason": decision.get("reason"),
+                    "gap": decision.get("gap"),
+                    "suggested": decision.get("selected"),
+                },
+                "buttons_raw_count": len(buttons),
+            }
+        finally:
+            await client.disconnect()
+
+    async def download_choice(self, request: ProviderRunRequest) -> dict[str, Any]:
+        """Search again (or rely on fresh search) and download a specific button choice."""
         ensure_runtime_dependencies()
         assert GetBotCallbackAnswerRequest is not None
 
@@ -141,38 +205,48 @@ class TelegramMusicProvider:
         try:
             baseline = await client.get_messages(request.bot, limit=1)
             last_id = baseline[0].id if baseline else 0
-
             search_message = build_search_message(request.query)
-            print(f"[1/4] send search: {search_message}")
             await client.send_message(request.bot, search_message)
-
-            print("[2/4] wait for inline result")
             result_msg = await wait_for_new_bot_message_with_buttons(
                 client, request.bot, last_id, request.search_timeout, request.poll_interval
             )
-            print(f"result message id={result_msg.id}")
-
             buttons = extract_callback_buttons(result_msg.reply_markup)
-            print("available buttons:")
-            for idx, btn in enumerate(buttons, start=1):
-                print(f"  {idx}. text={btn['text']} data={btn['data']!r}")
+            ranked = rank_candidates(request.query, buttons)
 
-            target = resolve_button_choice(buttons, button_index=request.button_index, button_text=request.button_text or None)
-
-            print(f"[3/4] click button: {target['text']}")
-            await client(GetBotCallbackAnswerRequest(peer=request.bot, msg_id=result_msg.id, data=target["data"]))
-
-            print("[4/4] wait for returned file")
+            target = resolve_button_choice(
+                buttons,
+                button_index=request.button_index,
+                button_text=request.button_text or None,
+            )
+            await client(
+                GetBotCallbackAnswerRequest(peer=request.bot, msg_id=result_msg.id, data=target["data"])
+            )
             file_msg = await wait_for_new_file_message(
                 client, request.bot, result_msg.id, request.download_timeout, request.poll_interval
             )
-
             out_path = download_dir / infer_download_filename(file_msg)
             saved = await file_msg.download_media(file=out_path)
-            print(f"downloaded: {saved}")
-            if file_msg.text:
-                print("caption:")
-                print(file_msg.text)
-            return Path(saved) if saved else out_path
+            path = Path(saved) if saved else out_path
+            return {
+                "success": True,
+                "query": request.query,
+                "path": str(path),
+                "chosen": {"text": target.get("text"), "index": next((i for i, b in enumerate(buttons, 1) if b is target or b.get("text") == target.get("text")), request.button_index)},
+                "candidates": [
+                    {"index": c["index"], "text": c["text"], "score": c["score"]} for c in ranked[:10]
+                ],
+                "caption": (file_msg.text or "")[:300] if getattr(file_msg, "text", None) else None,
+            }
         finally:
             await client.disconnect()
+
+    async def run(self, request: ProviderRunRequest) -> Path:
+        """Backward-compatible: search + download with optional auto policy.
+
+        If button_text/button_index explicitly set by caller beyond defaults, honor them.
+        For policy-aware behavior, prefer search_candidates + download_choice via ops.
+        """
+        result = await self.download_choice(request)
+        if not result.get("success"):
+            raise RuntimeError(result.get("error") or "download_failed")
+        return Path(result["path"])

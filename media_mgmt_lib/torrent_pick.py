@@ -1,0 +1,228 @@
+"""Torrent selection helpers for media-mgmt watch/download pipelines."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+
+_EP_PATTERNS = [
+    re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})"),
+    re.compile(r"[Ee][Pp]?(\d{1,3})\b"),
+    re.compile(r"第\s*0*(\d{1,3})\s*[集话話]"),
+    re.compile(r"\b0*(\d{1,3})\s*集"),
+]
+
+
+def _as_torrent_info(item: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        return {}
+    ti = item.get("torrent_info")
+    if isinstance(ti, dict) and ti:
+        return ti
+    # Already a TorrentInfo-like object
+    if "enclosure" in item or "site_name" in item:
+        return item
+    return {}
+
+
+def _text_blob(item: dict[str, Any], ti: dict[str, Any]) -> str:
+    parts = [
+        ti.get("title"),
+        ti.get("description"),
+        item.get("title"),
+        (item.get("meta_info") or {}).get("title") if isinstance(item.get("meta_info"), dict) else None,
+        (item.get("meta_info") or {}).get("subtitle") if isinstance(item.get("meta_info"), dict) else None,
+        (item.get("meta_info") or {}).get("org_string") if isinstance(item.get("meta_info"), dict) else None,
+    ]
+    return " ".join(str(p) for p in parts if p)
+
+
+def extract_episode(text: str) -> int | None:
+    if not text:
+        return None
+    m = _EP_PATTERNS[0].search(text)
+    if m:
+        return int(m.group(2))
+    for pat in _EP_PATTERNS[1:]:
+        m = pat.search(text)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def extract_season(text: str) -> int | None:
+    if not text:
+        return None
+    m = _EP_PATTERNS[0].search(text)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"[Ss]eason\s*(\d{1,2})", text)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"第\s*0*(\d{1,2})\s*季", text)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def matches_episode(
+    item: dict[str, Any],
+    *,
+    season: int | None = None,
+    episode: int | None = None,
+) -> bool:
+    if episode is None and season is None:
+        return True
+    ti = _as_torrent_info(item)
+    blob = _text_blob(item, ti)
+    meta = item.get("meta_info") if isinstance(item.get("meta_info"), dict) else {}
+    ep = extract_episode(blob)
+    se = extract_season(blob)
+    if ep is None and meta:
+        ep = meta.get("begin_episode") or meta.get("end_episode")
+        try:
+            ep = int(ep) if ep is not None else None
+        except (TypeError, ValueError):
+            ep = None
+    if se is None and meta:
+        se = meta.get("begin_season") or meta.get("end_season")
+        try:
+            se = int(se) if se is not None else None
+        except (TypeError, ValueError):
+            se = None
+    if episode is not None and ep != episode:
+        # Allow multi-episode packs that cover the target episode when explicit range is present
+        if not _covers_episode(blob, episode):
+            return False
+    if season is not None and se is not None and se != season:
+        return False
+    return True
+
+
+def _covers_episode(text: str, episode: int) -> bool:
+    # E01-E05 / EP01-EP05 / 第1-5集
+    m = re.search(r"[Ee][Pp]?0*(\d{1,3})\s*[-~～到至]\s*[Ee]?[Pp]?0*(\d{1,3})", text)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        lo, hi = (a, b) if a <= b else (b, a)
+        return lo <= episode <= hi
+    m = re.search(r"第\s*0*(\d{1,3})\s*[-~～到至]\s*0*(\d{1,3})\s*[集话話]", text)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        lo, hi = (a, b) if a <= b else (b, a)
+        return lo <= episode <= hi
+    return False
+
+
+def score_torrent(
+    item: dict[str, Any],
+    *,
+    season: int | None = None,
+    episode: int | None = None,
+    prefer_resolution: str = "1080p",
+    site_priority: list[str] | None = None,
+) -> tuple[int, ...]:
+    ti = _as_torrent_info(item)
+    blob = _text_blob(item, ti).lower()
+    title = str(ti.get("title") or "").lower()
+    seeders = int(ti.get("seeders") or 0)
+    dvf = ti.get("downloadvolumefactor")
+    try:
+        dvf_f = float(dvf) if dvf is not None else 1.0
+    except (TypeError, ValueError):
+        dvf_f = 1.0
+    free = 1 if dvf_f == 0 else 0
+    half = 1 if abs(dvf_f - 0.5) < 1e-9 else 0
+    res = prefer_resolution.lower()
+    res_hit = 1 if res and (res in title or res in blob) else 0
+    exact_ep = 0
+    if episode is not None:
+        if re.search(rf"[Ss]\d{{1,2}}[Ee]0*{episode}\b", title) or re.search(rf"[Ee]0*{episode}\b", title):
+            exact_ep = 2
+        elif matches_episode(item, season=season, episode=episode):
+            exact_ep = 1
+    site = str(ti.get("site_name") or "")
+    site_score = 0
+    if site_priority:
+        for i, name in enumerate(site_priority):
+            if name and name in site:
+                site_score = max(site_score, len(site_priority) - i)
+    # Prefer smaller rank distance: higher tuple wins
+    has_enclosure = 1 if ti.get("enclosure") else 0
+    return (exact_ep, has_enclosure, seeders, free, half, res_hit, site_score)
+
+
+def filter_and_rank(
+    items: list[dict[str, Any]],
+    *,
+    season: int | None = None,
+    episode: int | None = None,
+    prefer_resolution: str = "1080p",
+    site_priority: list[str] | None = None,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    filtered = [it for it in items if matches_episode(it, season=season, episode=episode)]
+    pool = filtered if filtered else list(items)
+    ranked = sorted(
+        pool,
+        key=lambda it: score_torrent(
+            it,
+            season=season,
+            episode=episode,
+            prefer_resolution=prefer_resolution,
+            site_priority=site_priority,
+        ),
+        reverse=True,
+    )
+    return ranked[: max(1, limit)] if ranked else []
+
+
+def pick_torrent(
+    items: list[dict[str, Any]],
+    *,
+    season: int | None = None,
+    episode: int | None = None,
+    prefer_resolution: str = "1080p",
+    site_priority: list[str] | None = None,
+    top_n: int = 3,
+) -> dict[str, Any]:
+    ranked = filter_and_rank(
+        items,
+        season=season,
+        episode=episode,
+        prefer_resolution=prefer_resolution,
+        site_priority=site_priority,
+        limit=max(top_n, 1),
+    )
+    if not ranked:
+        return {"selected": None, "candidates": [], "reason": "no_candidates"}
+    selected = ranked[0]
+    return {
+        "selected": selected,
+        "candidates": ranked[:top_n],
+        "reason": "ranked",
+        "score": score_torrent(
+            selected,
+            season=season,
+            episode=episode,
+            prefer_resolution=prefer_resolution,
+            site_priority=site_priority,
+        ),
+    }
+
+
+def summarize_candidate(item: dict[str, Any]) -> dict[str, Any]:
+    ti = _as_torrent_info(item)
+    blob = _text_blob(item, ti)
+    return {
+        "site_name": ti.get("site_name"),
+        "title": ti.get("title"),
+        "seeders": ti.get("seeders"),
+        "size": ti.get("size"),
+        "downloadvolumefactor": ti.get("downloadvolumefactor"),
+        "enclosure": bool(ti.get("enclosure")),
+        "episode": extract_episode(blob),
+        "season": extract_season(blob),
+        "page_url": ti.get("page_url"),
+    }

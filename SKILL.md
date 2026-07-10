@@ -10,13 +10,15 @@ Use when the user asks to search, transfer, subscribe, download, or unlock media
 ## Default intent
 
 - 用户直接发 115 分享链接+密码 → 自动转存到 MoviePilot P115StrmHelper，无需二次确认。
-- 用户要找影视资源 → 先识别媒体，再按媒体类型用 TMDB ID 搜 HDHive；HDHive 无资源时直接用 MoviePilot REST API 搜索并下载。
+- 用户要找影视资源 → **优先一条命令** `scripts/watch.py`；不要手搓 MoviePilot JSON。
 - 用户要订阅影视 → 先下载已有资源；确认未完结后再用 MoviePilot REST API 创建/更新订阅。
 - 用户要下歌/音乐 → 用 Telegram Music provider，默认下载目录来自 `config.json`。
 
 ## Config
 
 Runtime defaults live in local `config.json` at skill root. Public template: `config.example.json`.
+
+**Do not read config files before calling scripts.** All scripts load their own config via `load_json_config()` internally. Just call the script directly; if config is missing or wrong, the script will report the error.
 
 Main sections:
 
@@ -27,128 +29,134 @@ Main sections:
 - `douyin.api_base_url`, `douyin.download_dir`, `douyin.timeout`
 - `bilibili.api_base_url`, `bilibili.download_dir`, `bilibili.quality`, `bilibili.timeout`
 
-HDHive profile discovery: if `hdhive.profile_id` is empty, the provider finds a CloakManager profile by `hdhive.profile_name`; if only one profile exists, it uses that. It also tries to launch a stopped profile before CDP access.
+## Anti-detour checklist（强制）
+
+1. **不要先读 config.json** — 直接跑脚本。
+2. **不要猜有没有下载器** — `GET /api/v1/download/` 是**进行中任务**；空列表 ≠ 未配置。查客户端用：
+   - `python3 scripts/mp_api.py clients`
+   - 或 `GET /api/v1/download/clients`
+3. **不要手搓残缺 download body** — 用：
+   - `python3 scripts/watch.py "片名" --episode N --yes`
+   - 或 `mp_api.py download --from-search-result ... --media-json ...`
+4. **必须透传完整 `torrent_info`**（含 `enclosure` / `site_name` / cookie 字段）+ 完整 `media_info`（`type`/`title`/`tmdb_id`）。
+5. **新剧搜索 fallback**：`search/media/tmdb:id` 可能为空 → 立刻 title 搜 / 加 `SxxExx`，不要空转。
+6. **完成判定**：active 空了要查 `history/transfer`，不要只看 download list。
 
 ## Workflows
 
-### Watch request: identify → HDHive → MoviePilot API → subscribe
+### Watch request（默认主路径）
 
-When the user says “我要看 X” or asks to find/watch/download a film/series:
+用户说「我要看 X / 第 N 集」时：
 
-1. **Identify first**: use MoviePilot/TMDB REST API to determine title, media type, year, TMDB ID, original title/aliases, season, completion status, total/current episodes.
-2. **Search HDHive by typed TMDB tag**:
-   - movie → `https://hdhive.com/search?query=<tmdbid>&type=movie_tmdb_id&page=1`
-   - TV/series → `https://hdhive.com/search?query=<tmdbid>&type=tv_tmdb_id&page=1`
-   - Do not use ordinary keyword search first when a TMDB ID is known.
-3. **Hunt 115 first**: open the matched HDHive media page, switch to the 115 tab, list resources, pick by user preference, unlock, and transfer via MoviePilot P115StrmHelper.
-4. **Only if HDHive has no usable 115 resource**, use MoviePilot REST API for PT search/download. Do not use MCP as fallback.
-5. **Before downloading**, call `GET /api/v1/download/paths` and `GET /api/v1/media/category/config`, compute a concrete `save_path`, and pass it explicitly to the download API.
-6. **Subscribe last**: if the media is not completed, create/update a MoviePilot subscription after existing resources are handled.
+```bash
+cd /path/to/media-mgmt
+.venv/bin/python3 scripts/watch.py "金部长" --episode 5 --yes
+.venv/bin/python3 scripts/watch.py "Agent Kim Reactivated" --season 1 --episode 5 --prefer pt --yes
+.venv/bin/python3 scripts/watch.py status --tmdbid 296206 --episode 5
+```
+
+`watch.py` 固定流水线：
+
+1. **identify** — `recognize` / `media/search` / `media/tmdb:{id}`，拿到完整 `media_info`
+2. **HDHive（可选）** — 默认 `prefer=auto`；可用 `--skip-hdhive` / `--prefer pt` / `--hdhive-only`
+3. **PT 搜索 fallback 矩阵**
+   1. `GET /api/v1/search/media/tmdb:{id}`
+   2. `GET /api/v1/search/title`（中/英/原名）
+   3. title + `SxxExx` / `E0N` / `第N集`
+4. **pick** — seeders > 免费/半价 > 分辨率 > 站点优先级；过滤目标集
+5. **download** — 完整 `media_in` + 完整 `torrent_in` + 解析后的 `save_path` + 默认 `QB`
+6. **status** — active downloads + transfer history，输出整理路径
+
+常用参数：
+
+| 参数 | 含义 |
+|------|------|
+| `--yes` / `--auto` | 自动下载 top1（agent 默认加） |
+| `--dry-run` | 只识别/搜索/选种，不真正下载 |
+| `--pick-index N` | 选候选列表第 N 个 |
+| `--wait SEC` | 下载后轮询状态 |
+| `--subscribe` | 未完结时给订阅建议/创建 |
+| `--downloader QB` | 指定下载器 |
+
+### 低层 MoviePilot REST（仅排障）
+
+```bash
+.venv/bin/python3 scripts/mp_api.py identify "金特务" --media-type tv
+.venv/bin/python3 scripts/mp_api.py clients          # 下载器列表 + dashboard
+.venv/bin/python3 scripts/mp_api.py active           # 进行中任务
+.venv/bin/python3 scripts/mp_api.py status --tmdbid 296206 --episode 5
+.venv/bin/python3 scripts/mp_api.py pick --results-json candidates.json --episode 5
+.venv/bin/python3 scripts/mp_api.py download \
+  --from-search-result candidate.json \
+  --media-json media.json \
+  --downloader QB
+```
+
+Endpoint 语义：
+
+| Endpoint | 含义 |
+|----------|------|
+| `GET /api/v1/download/` | **进行中任务** |
+| `GET /api/v1/download/clients` | **已配置下载器** |
+| `GET /api/v1/dashboard/downloader` | 速度/空间健康度 |
+| `POST /api/v1/download/` | 含完整 `media_in` 的添加下载 |
+| `POST /api/v1/download/add` | 不含完整 media 的添加下载 |
+| `GET /api/v1/history/transfer` | 是否已整理/最终路径 |
+
+失败提示：
+
+- `validation_failed` → 缺 `enclosure`/`tmdb_id` 等，回到 `watch.py`
+- HTTP 500 on download → 多半 media/torrent 不完整
+- `任务添加失败` → 查 `clients`、种子链接、换候选源
+- 搜索 0 结果 → 资源未出，建议订阅
 
 ### HDHive unlock
 
 1. Connect CDP to a real `type=page` target; never attach to `service_worker`.
 2. Run `scripts/hdhive.py tmdb <movie|tv> <tmdbid>` to find the HDHive media page/resources.
-3. Run `scripts/hdhive.py unlock <resource_url>`.
-4. After unlock/confirm, extract the plaintext 115 URL from `location.href`, page text, or `a[href*="115"]` / `a[href*="115cdn"]`; do not rely on navigation only.
-
-### MoviePilot REST API
-
-1. Use REST API directly for media identify/search/download/subscription.
-2. Search PT resources with `GET /api/v1/search/media/{mediaid}` or `GET /api/v1/search/title`.
-3. Download with `POST /api/v1/download/` or `POST /api/v1/download/add`, always passing explicit `save_path`.
-4. Create/update subscriptions with `/api/v1/subscribe/`.
-5. MCP/mcporter is not part of this workflow.
+3. Run `scripts/hdhive.py unlock <resource_url>`. The script handles password masking and returns a plaintext 115 share URL.
+4. Pass the returned URL directly to `transfer_share_to_moviepilot()`.
 
 ### Telegram music
 
 1. Run `.venv/bin/python3 scripts/telegram_music_bot.py --query "歌手 歌名"`.
-   - **搜索词格式**：建议"歌名 歌手"或"歌手 歌名"均可，bot 对顺序不敏感。
-   - **必须使用 `.venv/bin/python3`**，确保 telethon 等依赖可用。
-2. `button_index=1` 是网易云搜索排序第一的结果，不一定是原版（可能是 Live、翻唱等）。如需指定版本，先看搜索结果列表，用 `--button-index N` 选择。
+2. `button_index=1` 不一定是原版；需要时用 `--button-index N`。
 3. Return downloaded file path; if sending back to chat, use file attachment rather than media directive for FLAC.
 
-### 抖音解析与下载
+### 抖音 / Bilibili
 
-当用户发送抖音链接（含 `douyin.com` 或 `v.douyin.com`）时：
-
-1. **解析优先**：调 `scripts/douyin.py parse <url> --json` 获取元数据
-2. **AI 解读**：基于返回的标题/描述/章节/统计，用 AI 做内容解读
-3. **按需下载**：
-   - 用户说"下载视频" → `scripts/douyin.py download <url>`
-   - 用户说"下载里面的歌" → 解析 chapter 中的曲目列表 → 逐首调 Telegram Music Bot
-4. **自动触发**：链接匹配 `douyin\.com|iesdouyin\.com` → 自动走抖音流程
-
-### Bilibili 解析与下载
-
-当用户发送 Bilibili 链接（含 `bilibili.com` 或 `b23.tv`）时：
-
-1. **解析优先**：调 `scripts/bilibili.py parse <url> --json` 获取元数据
-2. **AI 解读**：基于返回的标题/UP主/统计/评论，用 AI 做内容解读
-3. **按需下载**：
-   - 用户说"下载视频" → `scripts/bilibili.py download <url>`
-   - 指定画质 → `--quality 120` (4K) / `80` (1080P) / `64` (720P)
-4. **自动触发**：链接匹配 `bilibili\.com|b23\.tv` → 自动走 Bilibili 流程
-5. **下载原理**：API 返回 DASH 视频流+音频流 → ffmpeg 合并为 mp4
+- 抖音链接 → `scripts/douyin.py parse|download`
+- Bilibili 链接 → `scripts/bilibili.py parse|download`（需 ffmpeg）
 
 ## Critical caveats
 
 - MoviePilot REST auth: `apikey` query parameter works reliably in this environment.
 - HDHive blocks mainland IP; use the configured CloakManager profile/proxy.
 - HDHive TMDB search requires the correct search tag: `movie_tmdb_id` for movies, `tv_tmdb_id` for series.
-- HDHive CDP must attach to a `type=page` target, not `service_worker`; otherwise `document` is unavailable.
-- HDHive passwords may be masked as `***`; after unlock, read the plaintext share URL from `location.href`, page text, or 115/115cdn links.
-- MoviePilot download path: never call download without explicit `save_path`; compute it from `/api/v1/download/paths` + media category.
+- HDHive CDP must attach to a `type=page` target, not `service_worker`.
+- MoviePilot download path: never call download without explicit `save_path`; `watch.py` / `mp_api.py download --media-json` resolve it.
+- Empty `GET /download/` ≠ missing downloader.
 - Telegram music bot selection uses inline `callback_data`; sending text `1` is wrong.
-- Bilibili 下载需要 ffmpeg 合并音视频流（本机已安装 ffmpeg 5.1.6）
-- Bilibili 下载需要设置 Referer: https://www.bilibili.com
-- 抖音 `/api/download` 直接返回 mp4，不需要额外处理
-- 部分抖音接口（收藏/喜欢）需要 cookie，当前 provider 不支持 cookie 认证
-- Bilibili 短链 b23.tv 需要先解析重定向获取真实 URL
+- Bilibili 下载需要 ffmpeg 合并音视频流；Referer: `https://www.bilibili.com`
 
 ## Dependencies & Setup
 
-### Douyin_TikTok_Download_API (抖音/Bilibili/TikTok 解析后端)
+### Douyin_TikTok_Download_API
 
-抖音和 Bilibili provider 依赖 [Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) 作为解析后端。
-
-**Docker 部署（推荐）：**
 ```bash
-docker run -d --name douyin-api \
-  -p 7899:8080 \
-  -v /path/to/config.yaml:/Douyin_TikTok_Download_API/config.yaml \
-  evil0ctal/douyin_tiktok_download_api
+docker run -d --name douyin-api -p 7899:8080 evil0ctal/douyin_tiktok_download_api
 ```
 
-**或直接部署：**
-```bash
-git clone https://github.com/Evil0ctal/Douyin_TikTok_Download_API.git
-cd Douyin_TikTok_Download_API
-pip install -r requirements.txt
-python main.py
-```
-
-**重要配置：**
-- 默认端口 8080（映射到 config.json 中的 `7899`）
-- 抖音需要在 `config.yaml` 中配置浏览器 Cookie，否则解析会被风控拦截
-- Bilibili 部分功能也可能需要 Cookie
-- 项目支持抖音/TikTok/Bilibili/快手四平台
-
-### Telegram Music Bot (音乐下载)
+### Telegram Music Bot
 
 ```bash
 cd /path/to/media-mgmt
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-# requirements.txt: telethon, python-dotenv, websockets
 ```
 
-必须使用 `.venv/bin/python3` 运行，确保 telethon 等依赖可用。
-
-### ffmpeg (Bilibili 视频下载)
-
-Bilibili 下载需要 ffmpeg 合并 DASH 音视频流。本机已安装 ffmpeg 5.1.6。
+必须使用 `.venv/bin/python3` 运行。
 
 ## Command reference
 
-Load `references/commands.md` for exact curl/Python commands and examples. Prefer the REST/API scripts in this skill over MCP/mcporter.
+Load `references/commands.md` for exact commands and examples. Prefer `watch.py` over raw API/MCP.

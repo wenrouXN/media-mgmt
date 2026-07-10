@@ -40,6 +40,26 @@ PY
 # already done is also possible: {"code":-1,"msg":"你已经转存过该文件"}
 ```
 
+## Watch 一键主路径（优先）
+
+```bash
+# 识别 + 搜索 + 选种 + 下载
+.venv/bin/python3 scripts/watch.py "金部长" --episode 5 --yes
+.venv/bin/python3 scripts/watch.py "Agent Kim Reactivated" --season 1 --episode 5 --prefer pt --yes
+
+# 只演练不下载
+.venv/bin/python3 scripts/watch.py "金特务" --episode 5 --dry-run
+
+# 查状态（进行中任务 + 整理历史）
+.venv/bin/python3 scripts/watch.py status --tmdbid 296206 --episode 5
+```
+
+说明：
+
+- agent 默认加 `--yes`/`--auto`，避免停在 confirmation_required
+- `GET /api/v1/download/` 空列表只代表没有进行中任务，不代表没配下载器
+- 查下载器用 `mp_api.py clients`
+
 ## MoviePilot REST API
 
 ```bash
@@ -48,24 +68,35 @@ python3 scripts/mp_api.py media-detail --tmdbid 299365 --media-type tv
 python3 scripts/mp_api.py search --tmdbid 299365 --media-type tv --sites "6,19"
 python3 scripts/mp_api.py paths
 python3 scripts/mp_api.py category
+python3 scripts/mp_api.py clients
+python3 scripts/mp_api.py active
+python3 scripts/mp_api.py status --tmdbid 296206 --episode 5
 python3 scripts/mp_api.py resolve-path '{"type":"tv","original_language":"ko","origin_country":["KR"]}'
 ```
 
-下载必须显式传 `save_path`，或传 `--media-json` 让脚本自动计算。先 dry-run：
+下载必须显式传 `save_path`，或传 `--media-json` 让脚本自动计算。优先吃**完整搜索结果**：
 
 ```bash
 python3 scripts/mp_api.py download \
-  --torrent-json '{"title":"...","enclosure":"https://..."}' \
-  --media-json '{"type":"tv","original_language":"ko","origin_country":["KR"]}' \
+  --from-search-result candidate.json \
+  --media-json media.json \
+  --downloader QB \
   --dry-run
 ```
 
-确认无误后去掉 `--dry-run` 才会真正添加下载：
+旧写法（需完整 TorrentInfo）：
 
 ```bash
 python3 scripts/mp_api.py download \
-  --torrent-json '<TorrentInfo JSON 或文件路径>' \
-  --media-json '<MediaInfo JSON 或文件路径>'
+  --torrent-json '{"title":"...","enclosure":"https://...","site_name":"观众"}' \
+  --media-json '{"type":"电视剧","title":"...","tmdb_id":296206,"original_language":"ko","origin_country":["KR"]}' \
+  --dry-run
+```
+
+选种：
+
+```bash
+python3 scripts/mp_api.py pick --results-json results.json --season 1 --episode 5 --resolution 1080p
 ```
 
 订阅也先 dry-run：
@@ -85,10 +116,15 @@ python3 scripts/mp_api.py subscribe \
 
 - `GET /api/v1/media/search` / `GET /api/v1/media/recognize`：识别媒体和 TMDB ID。
 - `GET /api/v1/media/{mediaid}`：按 TMDB/mediaid 查媒体详情。
-- `GET /api/v1/search/media/{mediaid}`：按 `tmdb:<id>` 精确搜站点资源。
+- `GET /api/v1/search/media/{mediaid}`：按 `tmdb:<id>` 精确搜站点资源（新剧可能为空，需 title fallback）。
+- `GET /api/v1/search/title`：标题模糊搜资源。
 - `GET /api/v1/download/paths`：查询可直接用于 `save_path` 的下载路径。
 - `GET /api/v1/media/category/config`：查询媒体分类策略。
+- `GET /api/v1/download/`：**进行中任务**（不是下载器配置）。
+- `GET /api/v1/download/clients`：**已配置下载器**。
+- `GET /api/v1/dashboard/downloader`：下载器速度/空间。
 - `POST /api/v1/download/` / `POST /api/v1/download/add`：添加下载，必须显式传 `save_path`。
+- `GET /api/v1/history/transfer`：整理历史/最终路径。
 - `GET /api/v1/subscribe/media/{mediaid}` / `POST /api/v1/subscribe/`：查询/创建订阅。
 
 不要把 MCP/mcporter 当作 fallback；API 不支持时直接报告缺口。

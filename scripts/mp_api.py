@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -21,6 +22,7 @@ if repo_root_str not in sys.path:
     sys.path.insert(0, repo_root_str)
 
 from media_mgmt_lib.config import load_json_config, moviepilot_credentials
+from media_mgmt_lib.torrent_pick import pick_torrent, summarize_candidate
 
 
 def creds() -> dict[str, str]:
@@ -49,14 +51,108 @@ def request(method: str, path: str, params: dict[str, Any] | None = None, body: 
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method=method.upper())
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        raw = resp.read().decode("utf-8", "replace")
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", "replace") if hasattr(e, "read") else ""
+        parsed: Any
+        try:
+            parsed = json.loads(err_body) if err_body else err_body
+        except json.JSONDecodeError:
+            parsed = err_body
+        raise SystemExit(
+            json.dumps(
+                {
+                    "success": False,
+                    "error": "http_error",
+                    "status": e.code,
+                    "path": path,
+                    "method": method.upper(),
+                    "detail": parsed,
+                    "hint": _download_error_hint(path, e.code, parsed),
+                },
+                ensure_ascii=False,
+            )
+        ) from e
     if not raw:
         return None
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         return raw
+
+
+def _download_error_hint(path: str, status: int, detail: Any) -> str:
+    text = json.dumps(detail, ensure_ascii=False) if not isinstance(detail, str) else detail
+    if path.startswith("/api/v1/download"):
+        if status == 500:
+            return (
+                "Download API 500 usually means incomplete media_in/torrent_in. "
+                "Pass full recognize media_info + full search torrent_info (with enclosure/site_cookie). "
+                "Prefer: scripts/watch.py or --from-search-result."
+            )
+        if "任务添加失败" in text:
+            return (
+                "任务添加失败: check clients via /api/v1/download/clients, "
+                "ensure torrent enclosure is reachable, and pass complete torrent_info."
+            )
+        if status == 422:
+            return "Validation error: required fields missing (media_in/torrent_in)."
+    return "See detail for API error."
+
+
+def extract_torrent_info(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise SystemExit("torrent payload must be a JSON object")
+    if isinstance(value.get("torrent_info"), dict) and value["torrent_info"]:
+        return value["torrent_info"]
+    if isinstance(value.get("selected"), dict):
+        selected = value["selected"]
+        if isinstance(selected.get("torrent_info"), dict):
+            return selected["torrent_info"]
+        return selected
+    return value
+
+
+def extract_media_info(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise SystemExit("media payload must be a JSON object")
+    if isinstance(value.get("media_info"), dict) and value["media_info"]:
+        return value["media_info"]
+    if isinstance(value.get("selected"), dict) and value.get("source") in {"detail", "media-search", None}:
+        # identify output
+        selected = value["selected"]
+        if isinstance(selected, dict):
+            return selected
+    return value
+
+
+def validate_torrent_info(torrent_in: dict[str, Any], *, strict_site: bool = False) -> list[str]:
+    missing: list[str] = []
+    if not torrent_in.get("title"):
+        missing.append("title")
+    if not torrent_in.get("enclosure"):
+        missing.append("enclosure")
+    if strict_site and not torrent_in.get("site_name") and torrent_in.get("site") is None:
+        missing.append("site_name|site")
+    return missing
+
+
+def validate_media_info(media_in: dict[str, Any] | None, *, require_full: bool = False) -> list[str]:
+    if media_in is None:
+        return ["media_in"] if require_full else []
+    missing: list[str] = []
+    if not media_in.get("type") and not media_in.get("media_type"):
+        missing.append("type")
+    if require_full:
+        if not (media_in.get("tmdb_id") or media_in.get("tmdbid") or media_in.get("douban_id")):
+            missing.append("tmdb_id|douban_id")
+        if not (media_in.get("title") or media_in.get("name")):
+            missing.append("title")
+    return missing
 
 
 def media_type_api_to_cn(media_type: str) -> str:
@@ -368,8 +464,37 @@ def _load_json_arg(value: str) -> Any:
 
 
 def cmd_download(args: argparse.Namespace) -> None:
-    media_in = _load_json_arg(args.media_json) if args.media_json else None
-    torrent_in = _load_json_arg(args.torrent_json)
+    media_in = extract_media_info(_load_json_arg(args.media_json)) if args.media_json else None
+    if getattr(args, "from_search_result", None):
+        search_item = _load_json_arg(args.from_search_result)
+        torrent_in = extract_torrent_info(search_item)
+        if media_in is None and isinstance(search_item, dict):
+            maybe_media = search_item.get("media_info")
+            if isinstance(maybe_media, dict) and maybe_media:
+                media_in = maybe_media
+    else:
+        if not args.torrent_json:
+            raise SystemExit("download requires --torrent-json or --from-search-result")
+        torrent_in = extract_torrent_info(_load_json_arg(args.torrent_json))
+
+    missing_torrent = validate_torrent_info(torrent_in)
+    # Path-resolution dry-runs may only have type/language/country; require full media only for real downloads.
+    missing_media = validate_media_info(media_in, require_full=bool(media_in) and not args.dry_run)
+    if missing_torrent or missing_media:
+        print_json(
+            {
+                "success": False,
+                "error": "validation_failed",
+                "missing_torrent_fields": missing_torrent,
+                "missing_media_fields": missing_media,
+                "hint": (
+                    "Pass full search-result torrent_info (title/enclosure/site_name) "
+                    "and full recognize media_info (type/title/tmdb_id). Prefer scripts/watch.py."
+                ),
+            }
+        )
+        raise SystemExit(2)
+
     save_path = args.save_path
     resolved = None
     if not save_path and media_in:
@@ -380,14 +505,133 @@ def cmd_download(args: argparse.Namespace) -> None:
     if not save_path:
         raise SystemExit("Refusing to download without save_path. Pass --save-path or --media-json so it can be resolved.")
     if args.dry_run:
-        print_json({"dry_run": True, "endpoint": "/api/v1/download/" if media_in else "/api/v1/download/add", "save_path": save_path, "resolved_path": resolved, "media_in": media_in, "torrent_in": torrent_in, "downloader": args.downloader})
+        print_json(
+            {
+                "dry_run": True,
+                "endpoint": "/api/v1/download/" if media_in else "/api/v1/download/add",
+                "save_path": save_path,
+                "resolved_path": resolved,
+                "media_in": media_in,
+                "torrent_in": {k: torrent_in.get(k) for k in ["title", "site_name", "enclosure", "size", "seeders", "page_url"]},
+                "downloader": args.downloader,
+            }
+        )
         return
     if media_in:
         body = {"media_in": media_in, "torrent_in": torrent_in, "downloader": args.downloader, "save_path": save_path}
-        print_json(request("POST", "/api/v1/download/", body=body))
+        result = request("POST", "/api/v1/download/", body=body)
     else:
         body = {"torrent_in": torrent_in, "tmdbid": args.tmdbid, "doubanid": args.doubanid, "downloader": args.downloader, "save_path": save_path}
-        print_json(request("POST", "/api/v1/download/add", body=body))
+        result = request("POST", "/api/v1/download/add", body=body)
+    if isinstance(result, dict) and result.get("success") is False:
+        print_json(
+            {
+                **result,
+                "hint": _download_error_hint("/api/v1/download/", 200, result),
+                "next": "scripts/watch.py \"<title>\" --episode N  or re-run with --from-search-result full JSON",
+            }
+        )
+        raise SystemExit(3)
+    print_json(result)
+
+
+def cmd_clients(_: argparse.Namespace) -> None:
+    print_json(
+        {
+            "clients": request("GET", "/api/v1/download/clients"),
+            "dashboard": request("GET", "/api/v1/dashboard/downloader"),
+            "note": "GET /api/v1/download/ lists active tasks only; empty list does NOT mean downloaders are missing.",
+        }
+    )
+
+
+def cmd_active(_: argparse.Namespace) -> None:
+    print_json(request("GET", "/api/v1/download/") or [])
+
+
+def cmd_status(args: argparse.Namespace) -> None:
+    active = request("GET", "/api/v1/download/") or []
+    if not isinstance(active, list):
+        active = []
+    transfers = request("GET", "/api/v1/history/transfer", params={"page": 1, "count": args.count}) or {}
+    transfer_list = []
+    if isinstance(transfers, dict):
+        data = transfers.get("data")
+        if isinstance(data, dict):
+            transfer_list = data.get("list") or []
+        elif isinstance(data, list):
+            transfer_list = data
+    elif isinstance(transfers, list):
+        transfer_list = transfers
+
+    def match_active(item: dict[str, Any]) -> bool:
+        media = item.get("media") or {}
+        if args.tmdbid and int(media.get("tmdbid") or media.get("tmdb_id") or 0) == int(args.tmdbid):
+            if args.episode is None:
+                return True
+            ep = str(media.get("episode") or "")
+            return f"E{int(args.episode):02d}" in ep.upper() or str(args.episode) in ep
+        blob = json.dumps(item, ensure_ascii=False)
+        if args.title and args.title.lower() in blob.lower():
+            return True
+        return not args.tmdbid and not args.title
+
+    def match_transfer(item: dict[str, Any]) -> bool:
+        if args.tmdbid and int(item.get("tmdbid") or 0) == int(args.tmdbid):
+            if args.episode is None:
+                return True
+            eps = str(item.get("episodes") or "")
+            return f"E{int(args.episode):02d}" in eps.upper() or str(args.episode) in eps
+        if args.title:
+            return args.title.lower() in json.dumps(item, ensure_ascii=False).lower()
+        return False
+
+    matched_active = [x for x in active if isinstance(x, dict) and match_active(x)]
+    matched_transfers = [x for x in transfer_list if isinstance(x, dict) and match_transfer(x)]
+    state = "idle"
+    if matched_active:
+        state = "downloading"
+    elif matched_transfers:
+        state = "transferred"
+    print_json(
+        {
+            "state": state,
+            "active": matched_active,
+            "transfers": matched_transfers[: max(1, args.count)],
+            "clients": request("GET", "/api/v1/download/clients"),
+            "note": "Empty active list means no running tasks, not missing downloaders.",
+        }
+    )
+
+
+def cmd_pick(args: argparse.Namespace) -> None:
+    payload = _load_json_arg(args.results_json)
+    if isinstance(payload, dict):
+        items = payload.get("data") if isinstance(payload.get("data"), list) else payload.get("results") or payload.get("items") or []
+        if not items and isinstance(payload.get("selected"), dict):
+            items = [payload["selected"]]
+    elif isinstance(payload, list):
+        items = payload
+    else:
+        raise SystemExit("results-json must be list or object containing data/results")
+    site_priority = [s.strip() for s in (args.site_priority or "").split(",") if s.strip()] or None
+    picked = pick_torrent(
+        items,
+        season=args.season,
+        episode=args.episode,
+        prefer_resolution=args.resolution or "1080p",
+        site_priority=site_priority,
+        top_n=args.top,
+    )
+    print_json(
+        {
+            "selected_summary": summarize_candidate(picked["selected"]) if picked.get("selected") else None,
+            "candidates": [summarize_candidate(x) for x in picked.get("candidates") or []],
+            "selected": picked.get("selected"),
+            "reason": picked.get("reason"),
+            "score": picked.get("score"),
+        }
+    )
 
 
 def cmd_subscribe_get(args: argparse.Namespace) -> None:
@@ -498,7 +742,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_identify)
 
     p = sub.add_parser("download", help="Add download with explicit or resolved save_path")
-    p.add_argument("--torrent-json", required=True, help="TorrentInfo JSON or path")
+    p.add_argument("--torrent-json", help="TorrentInfo JSON or path")
+    p.add_argument("--from-search-result", help="Full search result JSON/path; extracts torrent_info (+ media_info if present)")
     p.add_argument("--media-json", help="MediaInfo JSON or path; enables /api/v1/download/ and path resolution")
     p.add_argument("--save-path")
     p.add_argument("--downloader")
@@ -506,6 +751,28 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--doubanid")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_download)
+
+    p = sub.add_parser("clients", help="List configured download clients (NOT active tasks)")
+    p.set_defaults(func=cmd_clients)
+
+    p = sub.add_parser("active", help="List active download tasks (GET /api/v1/download/)")
+    p.set_defaults(func=cmd_active)
+
+    p = sub.add_parser("status", help="Status for a title/tmdb/episode across active downloads + transfer history")
+    p.add_argument("--title")
+    p.add_argument("--tmdbid", type=int)
+    p.add_argument("--episode", type=int)
+    p.add_argument("--count", type=int, default=20)
+    p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("pick", help="Rank/filter torrent search results")
+    p.add_argument("--results-json", required=True, help="Search result list/object JSON or path")
+    p.add_argument("--season", type=int)
+    p.add_argument("--episode", type=int)
+    p.add_argument("--resolution", default="1080p")
+    p.add_argument("--site-priority", help="comma-separated preferred site names")
+    p.add_argument("--top", type=int, default=3)
+    p.set_defaults(func=cmd_pick)
 
     p = sub.add_parser("subscribe-get", help="Get subscription by media id")
     p.add_argument("--mediaid")

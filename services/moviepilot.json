@@ -18,7 +18,14 @@
     "status",
     "subscribe",
     "paths",
-    "transfer_share"
+    "transfer_share",
+    "library_exists",
+    "missing_episodes",
+    "transfer_history",
+    "download_history",
+    "subscribe_list",
+    "mediaserver_clients",
+    "library_latest"
   ],
   "health": {
     "type": "http_get",

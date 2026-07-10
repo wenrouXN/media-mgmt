@@ -12,32 +12,24 @@ Prefer `.venv/bin/python` when available. Runtime defaults: local `config.json`.
 
 ```bash
 .venv/bin/python scripts/media_ctl.py list
-.venv/bin/python scripts/media_ctl.py health
+.venv/bin/python scripts/media_ctl.py workflows
+.venv/bin/python scripts/media_ctl.py run doctor
+.venv/bin/python scripts/media_ctl.py run library --param title=金特务：本色回归
+.venv/bin/python scripts/media_ctl.py run updates --param title=金特务：本色回归
+.venv/bin/python scripts/media_ctl.py run duplicates --param title=金特务：本色回归 --param tmdbid=296206
+.venv/bin/python scripts/media_ctl.py run watch --param title=金特务 --param episode=5 --param dry_run=true
+.venv/bin/python scripts/media_ctl.py run link --param url='https://v.douyin.com/...' --param intent=下载
+.venv/bin/python scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=***'
+.venv/bin/python scripts/media_ctl.py run listen --param q=歌名
+.venv/bin/python scripts/media_ctl.py run subscribe --param title=金特务 --param action=check
 .venv/bin/python scripts/media_ctl.py health moviepilot
-.venv/bin/python scripts/doctor.py
 .venv/bin/python scripts/media_ctl.py ops moviepilot
 .venv/bin/python scripts/media_ctl.py call moviepilot clients
-.venv/bin/python scripts/media_ctl.py call moviepilot identify --param title=金特务
-.venv/bin/python scripts/media_ctl.py call moviepilot status --param tmdbid=296206 --param episode=5
-.venv/bin/python scripts/media_ctl.py call moviepilot subscribe --param action=get --param tmdbid=296206
-.venv/bin/python scripts/media_ctl.py call moviepilot transfer_share --param share_url='https://115.com/s/xxx?password=yyy'
-.venv/bin/python scripts/media_ctl.py call hdhive search --param q=金特务
-.venv/bin/python scripts/media_ctl.py call hdhive unlock --param url='https://hdhive.com/...'
-.venv/bin/python scripts/media_ctl.py call pansou search --param q=关键词
-.venv/bin/python scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/...' --param intent='下载'
-.venv/bin/python scripts/media_ctl.py call douyin parse --param url='https://v.douyin.com/...'
-.venv/bin/python scripts/media_ctl.py call douyin capabilities
-.venv/bin/python scripts/media_ctl.py call douyin comments --param aweme_id=7xxxxxxxxxxxxxxx
-.venv/bin/python scripts/media_ctl.py call bilibili parse --param url='https://www.bilibili.com/video/BVxxx'
-.venv/bin/python scripts/media_ctl.py call bilibili parts --param bv_id=BVxxx
-.venv/bin/python scripts/media_ctl.py call bilibili api --param path=/api/bilibili/web/fetch_video_danmaku --param cid=123
-.venv/bin/python scripts/media_ctl.py call tiktok parse --param url='https://www.tiktok.com/...'
-.venv/bin/python scripts/media_ctl.py call telegram_music search_download --param q=歌名
-.venv/bin/python scripts/media_ctl.py call cloakbrowser list_profiles
-.venv/bin/python scripts/media_ctl.py watch -- "金特务" --episode 5 --dry-run
+.venv/bin/python scripts/media_ctl.py call moviepilot missing_episodes --param title=金特务：本色回归
+.venv/bin/python scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/...' --param intent=下载
 ```
 
-Link intent map: `references/link-intents.md`.
+Fixed workflows: `references/workflows.md`. Link intents: `references/link-intents.md`.
 
 ## 盘搜搜索
 

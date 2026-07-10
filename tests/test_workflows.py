@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import media_mgmt_lib.ops.bootstrap  # noqa: F401
+from media_mgmt_lib.workflows import list_workflows, run_workflow
+
+
+REQUIRED = {
+    "watch",
+    "link",
+    "share115",
+    "listen",
+    "doctor",
+    "search",
+    "status",
+    "subscribe",
+    "library",
+    "updates",
+    "duplicates",
+    "hdhive",
+    "retry",
+}
+
+
+def test_all_fixed_workflows_registered():
+    names = {w["name"] for w in list_workflows()}
+    assert REQUIRED <= names
+
+
+def test_doctor_workflow_live():
+    r = run_workflow("doctor", {})
+    assert r.get("workflow") == "doctor"
+    assert "ok" in r and "total" in r
+
+
+def test_library_and_updates_live():
+    lib = run_workflow("library", {"title": "金特务：本色回归", "media_type": "电视剧"})
+    assert lib.get("success") is True
+    assert "exists" in lib
+    upd = run_workflow("updates", {"title": "金特务：本色回归"})
+    assert upd.get("success") is True
+    assert "has_update" in upd
+
+
+def test_duplicates_reports_only():
+    r = run_workflow("duplicates", {"title": "金特务：本色回归", "tmdbid": 296206})
+    assert r.get("success") is True
+    assert "duplicate_groups" in r
+    assert r.get("apply_requested") is False
+
+
+def test_unknown_workflow():
+    r = run_workflow("not-a-real-flow", {})
+    assert r.get("success") is False
+    assert r.get("error") == "unknown_workflow"

@@ -177,3 +177,151 @@ register_op("moviepilot", "paths", op_paths)
 register_op("moviepilot", "transfer_share", op_transfer_share)
 register_op("qbittorrent", "clients", op_clients)
 register_op("transmission", "clients", op_clients)
+
+
+def op_library_exists(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """Check if media exists in mediaserver library."""
+    import urllib.parse
+    import urllib.request
+    import json as _json
+    from media_mgmt_lib.config import moviepilot_credentials, load_json_config
+
+    creds = moviepilot_credentials(cfg if cfg else load_json_config())
+    if not creds:
+        return {"success": False, "error": "missing_moviepilot_config"}
+    q = {"apikey": creds["API_KEY"]}
+    for src, dst in (("title", "title"), ("year", "year"), ("mtype", "mtype"), ("media_type", "mtype"), ("tmdbid", "tmdbid"), ("season", "season")):
+        if params.get(src) is not None and params.get(src) != "":
+            q[dst] = params[src]
+    if "title" not in q and "tmdbid" not in q:
+        return {"success": False, "error": "missing_param", "need": "title|tmdbid"}
+    # title-only often more reliable for Emby match
+    url = f"{creds['BASE_URL'].rstrip('/')}/api/v1/mediaserver/exists?{urllib.parse.urlencode(q)}"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            body = _json.loads(resp.read().decode())
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": "request_failed", "detail": str(e)}
+    item = (body.get("data") or {}).get("item") if isinstance(body, dict) else None
+    exists = isinstance(item, dict) and bool(item)
+    return {"success": True, "exists": exists, "item": item if exists else None, "raw": body, "query": {k: q[k] for k in q if k != "apikey"}}
+
+
+def op_missing_episodes(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """Which episodes are missing in library (mediaserver/notexists)."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    from media_mgmt_lib.config import moviepilot_credentials, load_json_config
+    from media_mgmt_lib.ops._runner import run_mp_api
+
+    creds = moviepilot_credentials(cfg if cfg else load_json_config())
+    if not creds:
+        return {"success": False, "error": "missing_moviepilot_config"}
+    media = params.get("media") or params.get("media_json")
+    if isinstance(media, str) and media.strip().startswith("{"):
+        media = _json.loads(media)
+    if not isinstance(media, dict):
+        title = params.get("title")
+        tmdbid = params.get("tmdbid")
+        if not title and not tmdbid:
+            return {"success": False, "error": "missing_param", "need": "title|tmdbid|media"}
+        args = ["identify"]
+        if title:
+            args.append(str(title))
+        if tmdbid:
+            args += ["--tmdbid", str(tmdbid)]
+        mt = params.get("media_type") or params.get("mtype")
+        if mt:
+            args += ["--media-type", str(mt)]
+        identified = run_mp_api(args)
+        media = identified.get("selected") if isinstance(identified, dict) else None
+        if not isinstance(media, dict):
+            return {"success": False, "error": "identify_failed", "detail": identified}
+    url = f"{creds['BASE_URL'].rstrip('/')}/api/v1/mediaserver/notexists?{urllib.parse.urlencode({'apikey': creds['API_KEY']})}"
+    data = _json.dumps(media, ensure_ascii=False).encode()
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", "Accept": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode()
+            missing = _json.loads(raw) if raw else []
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": "notexists_failed", "detail": str(e)}
+    episodes = []
+    if isinstance(missing, list):
+        for block in missing:
+            if isinstance(block, dict):
+                for ep in block.get("episodes") or []:
+                    episodes.append({"season": block.get("season"), "episode": ep, **{k: block.get(k) for k in ("total_episode", "start_episode") if k in block}})
+    has_update = len(episodes) > 0
+    return {
+        "success": True,
+        "has_update": has_update,
+        "missing": missing,
+        "missing_episodes": episodes,
+        "media": {
+            "title": media.get("title"),
+            "tmdb_id": media.get("tmdb_id") or media.get("tmdbid"),
+            "type": media.get("type") or media.get("media_type"),
+            "year": media.get("year"),
+        },
+        "summary": f"缺 {len(episodes)} 集" if has_update else "媒体库已齐或无法比对缺集",
+    }
+
+
+def op_transfer_history(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    import urllib.parse
+    import urllib.request
+    import json as _json
+    from media_mgmt_lib.config import moviepilot_credentials, load_json_config
+
+    creds = moviepilot_credentials(cfg if cfg else load_json_config())
+    q = {"apikey": creds["API_KEY"], "page": params.get("page") or 1, "count": params.get("count") or 50}
+    if params.get("title"):
+        q["title"] = params["title"]
+    if params.get("status"):
+        q["status"] = params["status"]
+    url = f"{creds['BASE_URL'].rstrip('/')}/api/v1/history/transfer?{urllib.parse.urlencode(q)}"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        body = _json.loads(resp.read().decode())
+    return {"success": True, "data": body}
+
+
+def op_download_history(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    import urllib.parse
+    import urllib.request
+    import json as _json
+    from media_mgmt_lib.config import moviepilot_credentials, load_json_config
+
+    creds = moviepilot_credentials(cfg if cfg else load_json_config())
+    q = {"apikey": creds["API_KEY"], "page": params.get("page") or 1, "count": params.get("count") or 50}
+    url = f"{creds['BASE_URL'].rstrip('/')}/api/v1/history/download?{urllib.parse.urlencode(q)}"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        body = _json.loads(resp.read().decode())
+    return {"success": True, "data": body}
+
+
+def op_subscribe_list(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    from media_mgmt_lib.ops._runner import run_mp_api
+    return run_mp_api(["get", "/api/v1/subscribe/"])
+
+
+def op_mediaserver_clients(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    from media_mgmt_lib.ops._runner import run_mp_api
+    return run_mp_api(["get", "/api/v1/mediaserver/clients"])
+
+
+def op_library_latest(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    from media_mgmt_lib.ops._runner import run_mp_api
+    server = params.get("server") or "EMBY"
+    count = params.get("count") or 20
+    return run_mp_api(["get", "/api/v1/mediaserver/latest", f"server={server}", f"count={count}"])
+
+
+register_op("moviepilot", "library_exists", op_library_exists)
+register_op("moviepilot", "missing_episodes", op_missing_episodes)
+register_op("moviepilot", "transfer_history", op_transfer_history)
+register_op("moviepilot", "download_history", op_download_history)
+register_op("moviepilot", "subscribe_list", op_subscribe_list)
+register_op("moviepilot", "mediaserver_clients", op_mediaserver_clients)
+register_op("moviepilot", "library_latest", op_library_latest)

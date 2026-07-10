@@ -24,12 +24,20 @@ Prefer `.venv/bin/python` when available. Runtime defaults: local `config.json`.
 .venv/bin/python scripts/media_ctl.py call hdhive search --param q=金特务
 .venv/bin/python scripts/media_ctl.py call hdhive unlock --param url='https://hdhive.com/...'
 .venv/bin/python scripts/media_ctl.py call pansou search --param q=关键词
+.venv/bin/python scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/...' --param intent='下载'
 .venv/bin/python scripts/media_ctl.py call douyin parse --param url='https://v.douyin.com/...'
-.venv/bin/python scripts/media_ctl.py call bilibili parse --param url='https://www.bilibili.com/video/...'
+.venv/bin/python scripts/media_ctl.py call douyin capabilities
+.venv/bin/python scripts/media_ctl.py call douyin comments --param aweme_id=7xxxxxxxxxxxxxxx
+.venv/bin/python scripts/media_ctl.py call bilibili parse --param url='https://www.bilibili.com/video/BVxxx'
+.venv/bin/python scripts/media_ctl.py call bilibili parts --param bv_id=BVxxx
+.venv/bin/python scripts/media_ctl.py call bilibili api --param path=/api/bilibili/web/fetch_video_danmaku --param cid=123
+.venv/bin/python scripts/media_ctl.py call tiktok parse --param url='https://www.tiktok.com/...'
 .venv/bin/python scripts/media_ctl.py call telegram_music search_download --param q=歌名
 .venv/bin/python scripts/media_ctl.py call cloakbrowser list_profiles
 .venv/bin/python scripts/media_ctl.py watch -- "金特务" --episode 5 --dry-run
 ```
+
+Link intent map: `references/link-intents.md`.
 
 ## 盘搜搜索
 

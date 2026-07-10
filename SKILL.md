@@ -41,6 +41,19 @@ cd /path/to/media-mgmt
 
 `media_ctl ops` / `media_ctl ops <service>` 查看声明与实现是否齐套。
 
+### 抖音 / B站 / TikTok 链接（必看）
+
+用户丢链接时用 **hybrid/intent**，不要只会 parse：
+
+```bash
+.venv/bin/python scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/xxx' --param intent='下载'
+.venv/bin/python scripts/media_ctl.py call douyin capabilities
+.venv/bin/python scripts/media_ctl.py call bilibili capabilities
+.venv/bin/python scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_video_comments --param aweme_id=...
+```
+
+完整意图表：`references/link-intents.md`。上游全量约 66 接口见 `http://localhost:7899/docs`；具名 ops 覆盖常用，其余走 `op=api`。
+
 ## Default intent
 
 - 先问服务是否健康 → `doctor` / `media_ctl health`

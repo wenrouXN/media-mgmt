@@ -1,8 +1,8 @@
 {
-  "id": "douyin",
-  "name": "Douyin (7899 API)",
+  "id": "tiktok",
+  "name": "TikTok (7899 API)",
   "kind": "content_api",
-  "description": "Douyin via Douyin_TikTok_Download_API; parse/download + full named ops + raw api",
+  "description": "TikTok endpoints on same 7899 service",
   "config_section": "douyin",
   "required_config": [
     "api_base_url"
@@ -12,24 +12,18 @@
     "capabilities",
     "intent",
     "parse",
-    "download",
-    "download_stream",
     "api",
-    "hybrid_video",
     "video",
+    "video_app",
     "comments",
     "comment_replies",
     "user_profile",
     "user_posts",
     "user_likes",
-    "user_collections",
-    "user_mix",
-    "live_by_webcast",
-    "live_by_room",
-    "live_gifts",
-    "get_aweme_id",
-    "get_sec_user_id",
-    "update_cookie"
+    "user_fans",
+    "user_follow",
+    "hybrid_video",
+    "download"
   ],
   "health": {
     "type": "http_get",

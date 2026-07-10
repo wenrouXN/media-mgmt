@@ -1,17 +1,38 @@
 {
   "id": "bilibili",
-  "name": "Bilibili downloader API",
-  "kind": "content_fetcher",
-  "description": "Parse/download Bilibili via local API",
+  "name": "Bilibili (7899 API)",
+  "kind": "content_api",
+  "description": "Bilibili via local 7899 API + provider download",
   "config_section": "bilibili",
   "required_config": [
-    "api_base_url",
-    "download_dir"
+    "api_base_url"
   ],
   "ops": [
     "health",
+    "capabilities",
+    "intent",
     "parse",
-    "download"
+    "download",
+    "download_stream",
+    "api",
+    "video",
+    "playurl",
+    "parts",
+    "comments",
+    "comment_reply",
+    "danmaku",
+    "bv_to_aid",
+    "user_profile",
+    "user_posts",
+    "user_dynamic",
+    "user_collections",
+    "collect_folders",
+    "popular",
+    "live_room",
+    "live_stream",
+    "live_areas",
+    "live_streamers",
+    "hybrid_video"
   ],
   "health": {
     "type": "http_get",

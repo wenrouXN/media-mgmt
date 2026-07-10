@@ -7,4 +7,6 @@ import media_mgmt_lib.ops.pansou  # noqa: F401
 import media_mgmt_lib.ops.telegram_music  # noqa: F401
 import media_mgmt_lib.ops.douyin  # noqa: F401
 import media_mgmt_lib.ops.bilibili  # noqa: F401
+import media_mgmt_lib.ops.tiktok  # noqa: F401
+import media_mgmt_lib.ops.hybrid  # noqa: F401
 import media_mgmt_lib.ops.cloakbrowser  # noqa: F401

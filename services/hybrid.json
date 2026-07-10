@@ -1,0 +1,28 @@
+{
+  "id": "hybrid",
+  "name": "Hybrid link router (7899)",
+  "kind": "content_api",
+  "description": "One entry for douyin/tiktok/bilibili links: intent/parse/download + raw api",
+  "config_section": "douyin",
+  "required_config": [
+    "api_base_url"
+  ],
+  "ops": [
+    "health",
+    "capabilities",
+    "intent",
+    "parse",
+    "download",
+    "api",
+    "video_data",
+    "update_cookie"
+  ],
+  "health": {
+    "type": "http_get",
+    "url_from": "config.api_base_url",
+    "ok_status": [
+      200,
+      404
+    ]
+  }
+}

@@ -1,0 +1,190 @@
+"""Shared quality preference matching for PT torrents and HDHive resources."""
+from __future__ import annotations
+
+import re
+from typing import Any
+
+# Chinese audio / subtitle signals commonly seen on CN trackers / HDHive
+_CN_POS = [
+    "中字",
+    "简中",
+    "繁中",
+    "国语",
+    "国配",
+    "普通话",
+    "中文",
+    "双语",
+    "多语",
+    "chs",
+    "cht",
+    "zh-cn",
+    "zh-tw",
+    "chinese",
+    "mandarin",
+    "multi.?sub",
+    "multisub",
+    "简繁",
+    "内封",
+    "外挂",
+]
+_CN_RE = re.compile("|".join(_CN_POS), re.I)
+
+_HDR_POS = re.compile(r"\b(hdr10\+?|hdr|dolby.?vision|dovi|dv|hlg)\b", re.I)
+_SDR_HINT = re.compile(r"\bsdr\b", re.I)
+
+_RES_PATTERNS = {
+    "2160p": re.compile(r"(2160p|4k|uhd)", re.I),
+    "4k": re.compile(r"(2160p|4k|uhd)", re.I),
+    "1080p": re.compile(r"(1080p|1080i)", re.I),
+    "720p": re.compile(r"720p", re.I),
+    "480p": re.compile(r"480p", re.I),
+}
+
+
+def blob_of(*parts: Any) -> str:
+    return " ".join(str(p) for p in parts if p)
+
+
+def has_chinese(text: str) -> bool:
+    return bool(_CN_RE.search(text or ""))
+
+
+def has_hdr(text: str) -> bool:
+    return bool(_HDR_POS.search(text or ""))
+
+
+def has_sdr_label(text: str) -> bool:
+    return bool(_SDR_HINT.search(text or ""))
+
+
+def resolution_hit(text: str, prefer: str | None) -> bool:
+    if not prefer:
+        return True
+    key = prefer.lower().strip()
+    # normalize
+    if key in {"2160", "2160p", "4k", "uhd"}:
+        key = "2160p"
+    pat = _RES_PATTERNS.get(key) or re.compile(re.escape(key), re.I)
+    return bool(pat.search(text or ""))
+
+
+def detected_resolution(text: str) -> str | None:
+    t = text or ""
+    if _RES_PATTERNS["2160p"].search(t):
+        return "2160p"
+    if _RES_PATTERNS["1080p"].search(t):
+        return "1080p"
+    if _RES_PATTERNS["720p"].search(t):
+        return "720p"
+    if _RES_PATTERNS["480p"].search(t):
+        return "480p"
+    return None
+
+
+def matches_quality(
+    text: str,
+    *,
+    resolution: str | None = None,
+    require_chinese: bool = False,
+    hdr_mode: str = "any",  # any | sdr | hdr
+) -> bool:
+    t = text or ""
+    if resolution and not resolution_hit(t, resolution):
+        return False
+    if require_chinese and not has_chinese(t):
+        return False
+    mode = (hdr_mode or "any").lower()
+    if mode == "sdr":
+        # reject clear HDR/DV labels; bare absence of HDR counts as SDR
+        if has_hdr(t) and not has_sdr_label(t):
+            return False
+    elif mode == "hdr":
+        if not has_hdr(t):
+            return False
+    return True
+
+
+def quality_score(
+    text: str,
+    *,
+    resolution: str | None = "1080p",
+    require_chinese: bool = False,
+    hdr_mode: str = "any",
+) -> dict[str, Any]:
+    """Soft score components (higher better). Does not hard-filter."""
+    t = text or ""
+    res_ok = resolution_hit(t, resolution) if resolution else True
+    cn = has_chinese(t)
+    hdr = has_hdr(t)
+    sdr_lbl = has_sdr_label(t)
+    mode = (hdr_mode or "any").lower()
+
+    score = 0
+    reasons: list[str] = []
+    if res_ok:
+        score += 50
+        reasons.append("resolution_hit")
+    else:
+        reasons.append("resolution_miss")
+
+    if cn:
+        score += 40
+        reasons.append("chinese")
+    elif require_chinese:
+        score -= 40
+        reasons.append("chinese_missing")
+
+    if mode == "sdr":
+        if hdr and not sdr_lbl:
+            score -= 35
+            reasons.append("hdr_penalty")
+        else:
+            score += 15
+            reasons.append("sdr_ok")
+    elif mode == "hdr":
+        if hdr:
+            score += 20
+            reasons.append("hdr_hit")
+        else:
+            score -= 15
+            reasons.append("hdr_missing")
+
+    return {
+        "score": score,
+        "resolution_hit": res_ok,
+        "chinese": cn,
+        "hdr": hdr,
+        "detected_resolution": detected_resolution(t),
+        "matches_hard": matches_quality(t, resolution=resolution, require_chinese=require_chinese, hdr_mode=hdr_mode),
+        "reasons": reasons,
+    }
+
+
+def parse_quality_params(params: dict[str, Any]) -> dict[str, Any]:
+    res = params.get("resolution") or params.get("prefer_resolution")
+    if res:
+        res = str(res)
+        if res.lower() in {"4k", "uhd", "2160"}:
+            res = "2160p"
+    hdr_mode = str(params.get("hdr_mode") or params.get("hdr") or "any").lower()
+    if hdr_mode in {"true", "1", "yes"}:
+        hdr_mode = "hdr"
+    if hdr_mode in {"false", "0", "no"}:
+        hdr_mode = "any"
+    require_chinese = str(params.get("require_chinese") or params.get("chinese") or "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "中文",
+        "中字",
+        "国语",
+    }
+    # shorthand: lang=zh / lang=chinese
+    lang = str(params.get("lang") or params.get("language") or "").lower()
+    if lang in {"zh", "cn", "chinese", "中文", "chs"}:
+        require_chinese = True
+    return {
+        "resolution": res,
+        "require_chinese": require_chinese,
+        "hdr_mode": hdr_mode if hdr_mode in {"any", "sdr", "hdr"} else "any",
+    }

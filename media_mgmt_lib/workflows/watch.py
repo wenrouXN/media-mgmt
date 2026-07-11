@@ -31,9 +31,18 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         ("resolution", "--resolution"),
         ("pick_index", "--pick-index"),
         ("wait", "--wait"),
+        ("hdr_mode", "--hdr-mode"),
+        ("site_priority", "--site-priority"),
     ):
         if params.get(key) not in (None, ""):
             cmd += [flag, str(params[key])]
+    if str(params.get("require_chinese") or params.get("chinese") or "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "中文",
+    }:
+        cmd.append("--require-chinese")
     if str(params.get("yes", "true")).lower() in {"1", "true", "yes"} and not params.get("dry_run"):
         cmd.append("--yes")
     if params.get("dry_run") in (True, "true", "1", "yes"):

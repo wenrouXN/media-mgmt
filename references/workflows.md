@@ -27,6 +27,7 @@
 | duplicates | 是否重复、留哪个 | title\|tmdbid | 按 SxxExx 分组，建议 keep；**不自动删** |
 | hdhive | HDHive 资源 | q\|title | grab（可 transfer） |
 | retry | 失败换源 | title | search；auto=true 再 watch |
+| upgrade | 库内质量升级 | title\|tmdbid | 默认 HDHive→115，再 PT；4K/中文/SDR |
 
 ## 追更（已播下 / 未播订）
 
@@ -98,3 +99,23 @@ Agent 规则：模糊片名先 `run identify`，确认 `tmdb_id` 后再 `search`
 1. 命中上表 → `media_ctl run ...`，不要手搓 API JSON。  
 2. 未命中 → `call` / `ops` / `capabilities` 自由发挥。  
 3. 破坏性操作（删库文件、清历史）永远二次确认。  
+
+
+## 质量升级（4K / 中文 / SDR）
+
+默认：**先 HDHive 解锁 115 转存**，失败再 PT。不自动删旧版本。
+
+```bash
+# 计划（不下）
+.venv/bin/python scripts/media_ctl.py run upgrade \
+  --param tmdbid=296206 --param title=金特务：本色回归 --param episode=5 \
+  --param resolution=2160p --param hdr_mode=sdr --param require_chinese=true \
+  --param prefer=hdhive --param dry_run=true
+
+# 执行
+.venv/bin/python scripts/media_ctl.py run upgrade \
+  --param tmdbid=296206 --param episode=5 --param execute=true \
+  --param resolution=2160p --param hdr_mode=sdr --param require_chinese=true
+```
+
+成功后：`run duplicates` 对比新旧，确认后再删旧源。

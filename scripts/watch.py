@@ -428,6 +428,8 @@ def cmd_watch(args: argparse.Namespace) -> int:
         episode=args.episode,
         prefer_resolution=args.resolution or "1080p",
         site_priority=site_priority,
+        require_chinese=bool(getattr(args, "require_chinese", False)),
+        hdr_mode=str(getattr(args, "hdr_mode", "any") or "any"),
         top_n=args.top,
     )
     report["candidates"] = [summarize_candidate(x) for x in picked.get("candidates") or []]
@@ -540,6 +542,8 @@ def build_watch_parser() -> argparse.ArgumentParser:
     parser.add_argument("--force-pt", action="store_true")
     parser.add_argument("--sites", help="comma-separated site ids")
     parser.add_argument("--resolution", default="1080p")
+    parser.add_argument("--require-chinese", action="store_true", help="Prefer/require Chinese audio/subs signals in title")
+    parser.add_argument("--hdr-mode", choices=["any","sdr","hdr"], default="any")
     parser.add_argument("--site-priority", help="comma-separated preferred site names")
     parser.add_argument("--top", type=int, default=3)
     parser.add_argument("--pick-index", type=int, help="Choose candidate index from ranked list")

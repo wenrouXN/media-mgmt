@@ -28,16 +28,33 @@ def transfer_share_to_moviepilot(share_url: str) -> dict:
     return json.loads(urllib.request.urlopen(req).read())
 
 
-def pick_best_resource(resources: list[dict]) -> dict | None:
+def pick_best_resource(
+    resources: list[dict],
+    *,
+    resolution: str | None = None,
+    require_chinese: bool = False,
+    hdr_mode: str = "any",
+) -> dict | None:
+    """Pick HDHive resource; prefers quality prefs when provided."""
+    from media_mgmt_lib.quality_pref import quality_score, blob_of
+
     def score(resource: dict):
         tags = resource.get("tags", "")
         desc = resource.get("desc", "")
+        res = resource.get("resolution") or ""
         cost = resource.get("cost", "")
+        text = blob_of(desc, res, tags)
+        q = quality_score(
+            text,
+            resolution=resolution or "1080p",
+            require_chinese=require_chinese,
+            hdr_mode=hdr_mode,
+        )
         is_official = 1 if "官组" in tags else 0
-        is_4k = 1 if any(key in desc for key in ["4K", "4k", "2160"]) else 0
         is_free = 1 if ("免费" in tags or cost == "" or cost == "免费") else 0
         is_bad = 1 if "疑似失效" in tags else 0
-        return (-is_bad, is_official, is_4k, is_free)
+        hard = 1 if q.get("matches_hard") else 0
+        return (hard, -is_bad, int(q.get("score") or 0), is_official, is_free)
 
     return max(resources, key=score) if resources else None
 

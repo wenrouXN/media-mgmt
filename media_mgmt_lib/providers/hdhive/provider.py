@@ -303,17 +303,26 @@ async def _list_resources_on_current_page(ws):
         JSON.stringify(out);
     """)
     return json.loads(raw) if raw else []
-def pick_best_resource(resources):
+def pick_best_resource(resources, *, resolution=None, require_chinese=False, hdr_mode="any"):
+    from media_mgmt_lib.quality_pref import quality_score, blob_of
+
     def key(r):
         tags = r.get("tags", "")
-        desc = r.get("desc", "") + r.get("desc", "").lower()
-        resolution = r.get("resolution") or ""
+        desc = r.get("desc", "")
+        res = r.get("resolution") or ""
         cost = r.get("cost", "")
+        text = blob_of(desc, res, tags)
+        q = quality_score(
+            text,
+            resolution=resolution or "1080p",
+            require_chinese=bool(require_chinese),
+            hdr_mode=hdr_mode or "any",
+        )
         is_gz = 1 if "官组" in tags else 0
-        is_4k = 1 if any(k in desc for k in ["4K", "4k", "2160"]) or any(k in resolution for k in ["2160", "4K"]) else 0
         is_free = 1 if ("免费" in tags or cost == "" or cost == "免费") else 0
         is_bad = 1 if "疑似失效" in tags else 0
-        return (-is_bad, is_gz, is_4k, is_free)
+        hard = 1 if q.get("matches_hard") else 0
+        return (hard, -is_bad, int(q.get("score") or 0), is_gz, is_free)
     return max(resources, key=key) if resources else None
 
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from media_mgmt_lib.quality_pref import quality_score, matches_quality, blob_of
+
 
 _EP_PATTERNS = [
     re.compile(r"[Ss](\d{1,2})[Ee](\d{1,3})"),
@@ -115,6 +117,7 @@ def _covers_episode(text: str, episode: int) -> bool:
     return False
 
 
+
 def score_torrent(
     item: dict[str, Any],
     *,
@@ -122,10 +125,13 @@ def score_torrent(
     episode: int | None = None,
     prefer_resolution: str = "1080p",
     site_priority: list[str] | None = None,
+    require_chinese: bool = False,
+    hdr_mode: str = "any",
 ) -> tuple[int, ...]:
     ti = _as_torrent_info(item)
-    blob = _text_blob(item, ti).lower()
-    title = str(ti.get("title") or "").lower()
+    blob = _text_blob(item, ti)
+    blob_l = blob.lower()
+    title = str(ti.get("title") or "")
     seeders = int(ti.get("seeders") or 0)
     dvf = ti.get("downloadvolumefactor")
     try:
@@ -134,8 +140,12 @@ def score_torrent(
         dvf_f = 1.0
     free = 1 if dvf_f == 0 else 0
     half = 1 if abs(dvf_f - 0.5) < 1e-9 else 0
-    res = prefer_resolution.lower()
-    res_hit = 1 if res and (res in title or res in blob) else 0
+    q = quality_score(
+        blob_of(title, blob),
+        resolution=prefer_resolution,
+        require_chinese=require_chinese,
+        hdr_mode=hdr_mode,
+    )
     exact_ep = 0
     if episode is not None:
         if re.search(rf"[Ss]\d{{1,2}}[Ee]0*{episode}\b", title) or re.search(rf"[Ee]0*{episode}\b", title):
@@ -148,9 +158,19 @@ def score_torrent(
         for i, name in enumerate(site_priority):
             if name and name in site:
                 site_score = max(site_score, len(site_priority) - i)
-    # Prefer smaller rank distance: higher tuple wins
     has_enclosure = 1 if ti.get("enclosure") else 0
-    return (exact_ep, has_enclosure, seeders, free, half, res_hit, site_score)
+    hard = 1 if q.get("matches_hard") else 0
+    # higher tuple wins
+    return (
+        hard,
+        exact_ep,
+        has_enclosure,
+        int(q.get("score") or 0),
+        seeders,
+        free,
+        half,
+        site_score,
+    )
 
 
 def filter_and_rank(
@@ -160,10 +180,27 @@ def filter_and_rank(
     episode: int | None = None,
     prefer_resolution: str = "1080p",
     site_priority: list[str] | None = None,
+    require_chinese: bool = False,
+    hdr_mode: str = "any",
+    hard_filter: bool = True,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
     filtered = [it for it in items if matches_episode(it, season=season, episode=episode)]
     pool = filtered if filtered else list(items)
+    if hard_filter and (prefer_resolution or require_chinese or (hdr_mode or "any") != "any"):
+        quality_pool = []
+        for it in pool:
+            ti = _as_torrent_info(it)
+            blob = _text_blob(it, ti)
+            if matches_quality(
+                blob_of(ti.get("title"), blob),
+                resolution=prefer_resolution,
+                require_chinese=require_chinese,
+                hdr_mode=hdr_mode,
+            ):
+                quality_pool.append(it)
+        if quality_pool:
+            pool = quality_pool
     ranked = sorted(
         pool,
         key=lambda it: score_torrent(
@@ -172,6 +209,8 @@ def filter_and_rank(
             episode=episode,
             prefer_resolution=prefer_resolution,
             site_priority=site_priority,
+            require_chinese=require_chinese,
+            hdr_mode=hdr_mode,
         ),
         reverse=True,
     )
@@ -185,6 +224,9 @@ def pick_torrent(
     episode: int | None = None,
     prefer_resolution: str = "1080p",
     site_priority: list[str] | None = None,
+    require_chinese: bool = False,
+    hdr_mode: str = "any",
+    hard_filter: bool = True,
     top_n: int = 3,
 ) -> dict[str, Any]:
     ranked = filter_and_rank(
@@ -193,22 +235,46 @@ def pick_torrent(
         episode=episode,
         prefer_resolution=prefer_resolution,
         site_priority=site_priority,
+        require_chinese=require_chinese,
+        hdr_mode=hdr_mode,
+        hard_filter=hard_filter,
         limit=max(top_n, 1),
     )
     if not ranked:
         return {"selected": None, "candidates": [], "reason": "no_candidates"}
     selected = ranked[0]
-    return {
-        "selected": selected,
-        "candidates": ranked[:top_n],
-        "reason": "ranked",
-        "score": score_torrent(
-            selected,
+    # confidence: gap between top and second hard scores
+    scores = [
+        score_torrent(
+            it,
             season=season,
             episode=episode,
             prefer_resolution=prefer_resolution,
             site_priority=site_priority,
-        ),
+            require_chinese=require_chinese,
+            hdr_mode=hdr_mode,
+        )
+        for it in ranked[:2]
+    ]
+    needs_confirm = False
+    if len(scores) >= 2 and scores[0][:4] == scores[1][:4]:
+        needs_confirm = True
+    ti = _as_torrent_info(selected)
+    q = quality_score(
+        blob_of(ti.get("title"), _text_blob(selected, ti)),
+        resolution=prefer_resolution,
+        require_chinese=require_chinese,
+        hdr_mode=hdr_mode,
+    )
+    if not q.get("matches_hard"):
+        needs_confirm = True
+    return {
+        "selected": selected,
+        "candidates": ranked[:top_n],
+        "reason": "ranked",
+        "score": scores[0] if scores else None,
+        "quality": q,
+        "needs_confirm": needs_confirm,
     }
 
 

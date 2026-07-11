@@ -21,7 +21,31 @@ REQUIRED = {
     "duplicates",
     "hdhive",
     "retry",
+    "upgrade",
 }
+
+
+def test_upgrade_workflow_dry_plan():
+    r = run_workflow(
+        "upgrade",
+        {
+            "tmdbid": 296206,
+            "title": "金特务：本色回归",
+            "episode": 5,
+            "resolution": "2160p",
+            "hdr_mode": "sdr",
+            "require_chinese": True,
+            "prefer": "hdhive",
+            "dry_run": True,
+        },
+    )
+    assert r.get("workflow") == "upgrade"
+    assert r.get("prefer") == "hdhive"
+    assert r.get("quality", {}).get("resolution") == "2160p"
+    assert r.get("quality", {}).get("hdr_mode") == "sdr"
+    assert r.get("quality", {}).get("require_chinese") is True
+    assert "plan" in r
+    assert (r.get("actions") or {}).get("hdhive", {}).get("skipped") is True
 
 
 def test_schedule_and_catchup_plan_live():

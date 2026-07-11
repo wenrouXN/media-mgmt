@@ -19,6 +19,7 @@ from media_mgmt_lib.workflows import catchup as w_catchup
 from media_mgmt_lib.workflows import duplicates as w_duplicates
 from media_mgmt_lib.workflows import hdhive as w_hdhive
 from media_mgmt_lib.workflows import retry as w_retry
+from media_mgmt_lib.workflows import upgrade as w_upgrade
 
 WorkflowFn = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -117,6 +118,12 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "fn": w_retry.run,
         "summary": "下载失败换源重试（半自动：给候选+可再下）",
         "need": ["title"],
+        "fixed": True,
+    },
+    "upgrade": {
+        "fn": w_upgrade.run,
+        "summary": "库内质量升级：默认 HDHive→115，再 PT；支持 4K/中文/SDR 过滤",
+        "need": ["title|tmdbid"],
         "fixed": True,
     },
 }

@@ -213,3 +213,8 @@ python3 scripts/telegram_music_bot.py \
 ```
 
 下载原理：API 返回 DASH 视频流+音频流 → ffmpeg 合并为 mp4。需要设置 Referer: https://www.bilibili.com
+
+
+```bash
+.venv/bin/python scripts/media_ctl.py run upgrade --param tmdbid=296206 --param resolution=2160p --param hdr_mode=sdr --param require_chinese=true --param dry_run=true
+```

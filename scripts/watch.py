@@ -28,8 +28,24 @@ from media_mgmt_lib.torrent_pick import pick_torrent, summarize_candidate  # noq
 
 import scripts.mp_api as mp_api  # noqa: E402
 
+# Stage progress goes to stderr so stdout stays pure JSON for agents.
+_STAGES: list[dict[str, Any]] = []
+
+
+def _stage(name: str, **extra: Any) -> None:
+    entry = {"stage": name, "t": round(time.time(), 3), **extra}
+    _STAGES.append(entry)
+    bits = [f"[watch] {name}"]
+    for k, v in extra.items():
+        if v is None or v == "":
+            continue
+        bits.append(f"{k}={v}")
+    print(" ".join(bits), file=sys.stderr, flush=True)
+
 
 def print_json(value: Any) -> None:
+    if isinstance(value, dict) and _STAGES and "stages" not in value:
+        value = {**value, "stages": list(_STAGES)}
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
@@ -78,6 +94,7 @@ def _episode_keywords(season: int | None, episode: int | None) -> list[str]:
 
 
 def identify_media(title: str, media_type: str | None, year: str | None, tmdbid: int | None) -> dict[str, Any]:
+    _stage("identify_start", title=title, tmdbid=tmdbid)
     if tmdbid:
         mtype = mp_api.normalize_mtype(media_type or "tv") or "电视剧"
         detail = mp_api.request(
@@ -86,12 +103,14 @@ def identify_media(title: str, media_type: str | None, year: str | None, tmdbid:
             params={"type_name": mtype, "title": title, "year": year},
         )
         if isinstance(detail, dict) and detail:
+            _stage("identify_done", via="tmdb_detail", tmdb_id=detail.get("tmdb_id") or tmdbid)
             return detail
         # fallback recognize
         rec = mp_api.request("GET", "/api/v1/media/recognize", params={"title": title})
         if isinstance(rec, dict) and isinstance(rec.get("media_info"), dict):
+            _stage("identify_done", via="recognize_fallback", tmdb_id=(rec["media_info"] or {}).get("tmdb_id"))
             return rec["media_info"]
-        raise SystemExit(json.dumps({"success": False, "error": "identify_failed", "tmdbid": tmdbid}, ensure_ascii=False))
+        raise SystemExit(json.dumps({"success": False, "error": "identify_failed", "tmdbid": tmdbid, "stages": list(_STAGES)}, ensure_ascii=False))
 
     # Prefer recognize (returns full media_info incl. names/category)
     rec = mp_api.request("GET", "/api/v1/media/recognize", params={"title": title})
@@ -100,12 +119,13 @@ def identify_media(title: str, media_type: str | None, year: str | None, tmdbid:
         if year and str(media.get("year") or "") not in {"", str(year)}:
             pass  # keep but continue with search refine
         else:
+            _stage("identify_done", via="recognize", tmdb_id=media.get("tmdb_id"))
             return media
 
     results = mp_api.request("GET", "/api/v1/media/search", params={"title": title, "type": "media", "page": 1, "count": 10})
     selected = mp_api._pick_media_search_result(results, title=title, media_type=media_type, year=year)
     if not selected:
-        raise SystemExit(json.dumps({"success": False, "error": "media_not_found", "title": title}, ensure_ascii=False))
+        raise SystemExit(json.dumps({"success": False, "error": "media_not_found", "title": title, "stages": list(_STAGES)}, ensure_ascii=False))
     tmdb_id = selected.get("tmdb_id") or selected.get("tmdbid")
     mtype = mp_api.normalize_mtype(media_type or selected.get("type") or "tv") or "电视剧"
     if tmdb_id:
@@ -115,11 +135,14 @@ def identify_media(title: str, media_type: str | None, year: str | None, tmdbid:
             params={"type_name": mtype, "title": selected.get("title") or title, "year": selected.get("year") or year},
         )
         if isinstance(detail, dict) and detail.get("tmdb_id"):
+            _stage("identify_done", via="media_search+detail", tmdb_id=detail.get("tmdb_id"))
             return detail
     # recognize with selected title
     rec2 = mp_api.request("GET", "/api/v1/media/recognize", params={"title": selected.get("title") or title})
     if isinstance(rec2, dict) and isinstance(rec2.get("media_info"), dict):
+        _stage("identify_done", via="media_search+recognize", tmdb_id=(rec2["media_info"] or {}).get("tmdb_id"))
         return rec2["media_info"]
+    _stage("identify_done", via="media_search_selected", tmdb_id=tmdb_id)
     return selected
 
 
@@ -138,6 +161,7 @@ def search_pt_resources(
     year = media.get("year")
     collected: list[dict[str, Any]] = []
     seen: set[str] = set()
+    _stage("pt_search_start", tmdb_id=tmdb_id, season=season, episode=episode, enough=enough)
 
     def add_items(items: Any, source: str) -> int:
         added = 0
@@ -175,26 +199,33 @@ def search_pt_resources(
     # 1) media id search
     if tmdb_id:
         try:
+            _stage("pt_search_media_id", tmdb_id=tmdb_id)
             res = mp_api.request(
                 "GET",
                 f"/api/v1/search/media/{urllib.parse.quote(f'tmdb:{tmdb_id}', safe=':')}",
                 params={"mtype": mtype, "title": title, "year": year, "season": season, "sites": sites},
             )
-            add_items(res, f"media:tmdb:{tmdb_id}")
+            added = add_items(res, f"media:tmdb:{tmdb_id}")
+            _stage("pt_search_media_id_done", added=added, total=len(collected), ep_hits=episode_hits())
         except SystemExit:
-            pass
+            _stage("pt_search_media_id_failed")
         if episode_hits() >= enough:
+            _stage("pt_search_early_exit", reason="media_id_enough", total=len(collected))
             return collected
 
     variants = _title_variants(title, media, limit=4)
     # 2) plain title variants first (broad net)
     for base in variants:
         try:
+            _stage("pt_search_title", keyword=base)
             res = mp_api.request("GET", "/api/v1/search/title", params={"keyword": base, "page": 0, "sites": sites})
-            add_items(res, f"title:{base}")
+            added = add_items(res, f"title:{base}")
+            _stage("pt_search_title_done", keyword=base, added=added, total=len(collected), ep_hits=episode_hits())
         except SystemExit:
+            _stage("pt_search_title_failed", keyword=base)
             continue
         if episode_hits() >= enough:
+            _stage("pt_search_early_exit", reason="title_enough", total=len(collected))
             return collected
 
     # 3) precise episode keywords only on top 2 titles, top 3 episode forms
@@ -203,17 +234,28 @@ def search_pt_resources(
         for ek in ep_keys:
             kw = f"{base} {ek}"
             try:
+                _stage("pt_search_ep_kw", keyword=kw)
                 res = mp_api.request("GET", "/api/v1/search/title", params={"keyword": kw, "page": 0, "sites": sites})
-                add_items(res, f"title:{kw}")
+                added = add_items(res, f"title:{kw}")
+                _stage("pt_search_ep_kw_done", keyword=kw, added=added, total=len(collected), ep_hits=episode_hits())
             except SystemExit:
+                _stage("pt_search_ep_kw_failed", keyword=kw)
                 continue
             if episode_hits() >= enough:
+                _stage("pt_search_early_exit", reason="ep_kw_enough", total=len(collected))
                 return collected
 
+    _stage("pt_search_done", total=len(collected), ep_hits=episode_hits())
     return collected
 
 
-def try_hdhive(media: dict[str, Any], season: int | None, episode: int | None) -> dict[str, Any] | None:
+def try_hdhive(
+    media: dict[str, Any],
+    season: int | None,
+    episode: int | None,
+    *,
+    timeout: float = 90,
+) -> dict[str, Any] | None:
     tmdb_id = media.get("tmdb_id") or media.get("tmdbid")
     if not tmdb_id:
         return None
@@ -222,16 +264,21 @@ def try_hdhive(media: dict[str, Any], season: int | None, episode: int | None) -
     script = repo_root / "scripts" / "hdhive.py"
     if not script.exists():
         return {"success": False, "error": "hdhive_script_missing"}
+    _stage("hdhive_start", tmdb_id=tmdb_id, kind=kind, timeout=timeout)
     try:
         proc = subprocess.run(
             [sys.executable, str(script), "tmdb", kind, str(tmdb_id)],
             cwd=str(repo_root),
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=timeout,
             check=False,
         )
+    except subprocess.TimeoutExpired:
+        _stage("hdhive_timeout", timeout=timeout)
+        return {"success": False, "error": "hdhive_timeout", "timeout": timeout}
     except Exception as e:  # noqa: BLE001
+        _stage("hdhive_failed", detail=str(e))
         return {"success": False, "error": "hdhive_exec_failed", "detail": str(e)}
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()
@@ -240,6 +287,7 @@ def try_hdhive(media: dict[str, Any], season: int | None, episode: int | None) -
         payload = json.loads(out) if out else {"stdout": out, "stderr": err, "code": proc.returncode}
     except json.JSONDecodeError:
         payload = {"stdout": out, "stderr": err, "code": proc.returncode}
+    _stage("hdhive_done", code=proc.returncode, success=proc.returncode == 0)
     return {
         "success": proc.returncode == 0,
         "code": proc.returncode,
@@ -375,6 +423,7 @@ def maybe_subscribe(media: dict[str, Any], season: int | None, dry_run: bool) ->
 
 
 def cmd_watch(args: argparse.Namespace) -> int:
+    _STAGES.clear()
     media = identify_media(args.title, args.media_type, args.year, args.tmdbid)
     tmdbid = media.get("tmdb_id") or media.get("tmdbid")
     report: dict[str, Any] = {
@@ -396,8 +445,9 @@ def cmd_watch(args: argparse.Namespace) -> int:
     }
 
     hdhive_result = None
+    hdhive_timeout = float(getattr(args, "hdhive_timeout", 90) or 90)
     if args.prefer in {"hdhive", "auto"} and not args.skip_hdhive:
-        hdhive_result = try_hdhive(media, args.season, args.episode)
+        hdhive_result = try_hdhive(media, args.season, args.episode, timeout=hdhive_timeout)
         report["hdhive"] = hdhive_result
         if args.hdhive_only:
             print_json(report)
@@ -407,20 +457,23 @@ def cmd_watch(args: argparse.Namespace) -> int:
         # For now HDHive success still needs unlock/transfer workflow; fall through unless only.
         report["note"] = "HDHive candidates found; continuing PT unless --hdhive-only."
 
+    _stage("clients_check")
     clients = ensure_clients()
     report["clients"] = clients
+    _stage("clients_ok", count=len(clients) if isinstance(clients, list) else 0)
 
     items = search_pt_resources(media, args.season, args.episode, args.sites)
     report["search_count"] = len(items)
     if not items:
         report["success"] = False
         report["error"] = "no_resources"
-        report["hint"] = "Resource may be too new / not indexed. Consider subscription."
+        report["hint"] = "Resource may be too new / not indexed. Prefer run updates/subscribe; do not invent mp_api flags."
         if args.subscribe:
             report["subscribe"] = maybe_subscribe(media, args.season, args.dry_run)
         print_json(report)
         return 4
 
+    _stage("pick_start", search_count=len(items))
     site_priority = [s.strip() for s in (args.site_priority or "").split(",") if s.strip()] or None
     picked = pick_torrent(
         items,
@@ -434,9 +487,11 @@ def cmd_watch(args: argparse.Namespace) -> int:
     )
     report["candidates"] = [summarize_candidate(x) for x in picked.get("candidates") or []]
     selected = picked.get("selected")
+    _stage("pick_done", selected=bool(selected), candidates=len(report["candidates"]))
     if not selected:
         report["success"] = False
         report["error"] = "pick_failed"
+        report["hint"] = "Search returned items but none matched season/episode filter. Resource may not be out yet."
         print_json(report)
         return 5
 
@@ -554,6 +609,12 @@ def build_watch_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--wait", type=int, default=0, help="Seconds to poll status after download")
     parser.add_argument("--subscribe", action="store_true", help="Suggest/create subscription when unfinished")
+    parser.add_argument(
+        "--hdhive-timeout",
+        type=float,
+        default=90,
+        help="Seconds before HDHive subprocess is aborted (default 90); watch continues to PT",
+    )
     return parser
 
 

@@ -85,9 +85,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_watch(args: argparse.Namespace) -> int:
     """Delegate workflow to scripts/watch.py (composition root)."""
-    py = ROOT / ".venv" / "bin" / "python"
-    exe = str(py) if py.exists() else sys.executable
-    cmd = [exe, str(ROOT / "scripts" / "watch.py"), *args.watch_args]
+    cmd = [sys.executable, str(ROOT / "scripts" / "watch.py"), *args.watch_args]
     proc = subprocess.run(cmd, cwd=str(ROOT))
     return proc.returncode
 

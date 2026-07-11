@@ -9,6 +9,7 @@ from media_mgmt_lib.workflows import watch as w_watch
 from media_mgmt_lib.workflows import link as w_link
 from media_mgmt_lib.workflows import share115 as w_share115
 from media_mgmt_lib.workflows import listen as w_listen
+from media_mgmt_lib.workflows import playlist as w_playlist
 from media_mgmt_lib.workflows import search as w_search
 from media_mgmt_lib.workflows import status as w_status
 from media_mgmt_lib.workflows import subscribe as w_subscribe
@@ -52,6 +53,12 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "fn": w_listen.run,
         "summary": "听歌/下歌",
         "need": ["q"],
+        "fixed": True,
+    },
+    "playlist": {
+        "fn": w_playlist.run,
+        "summary": "公共歌单链接解析（网易云/QQ/酷我/酷狗）→曲目+listen queries",
+        "need": ["url"],
         "fixed": True,
     },
     "doctor": {

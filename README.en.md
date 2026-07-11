@@ -12,12 +12,13 @@ Skill for private media workflows: 115 resource search, MoviePilot transfer, HDH
 - Transfer 115 share links through MoviePilot `P115StrmHelper`.
 - Search HDHive, list 115 resources, unlock share links, and transfer the best resource.
 - Download music from a Telegram music bot via inline callback buttons.
+- Parse public playlist URLs (NetEase / QQ / Kuwo / Kugou) into track metadata + listen queries (no bulk download).
 - Provider-style layout under `media_mgmt_lib/providers/` with thin CLI wrappers under `scripts/`.
 
 ## Requirements
 
 - Python 3.11+
-- Python packages: `websockets`, `telethon`, `python-dotenv`
+- Python packages: `websockets`, `telethon`, `python-dotenv`, `httpx`
 - MoviePilot REST API for media recognition, search, subscriptions, download paths, and downloads
 - Service accounts/access for whichever providers you enable:
   - Search service exposing `POST /api/search`

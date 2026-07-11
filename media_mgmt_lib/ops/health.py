@@ -65,6 +65,15 @@ def check_service(svc: Service, root_config: dict[str, Any] | None = None) -> di
 
     htype = (svc.health or {}).get("type") or "config_present"
 
+    if htype == "always_ok":
+        return {
+            **base,
+            "success": True,
+            "status": "ok",
+            "note": "no external dependency",
+            "missing_config": missing,
+        }
+
     if htype == "config_present":
         ok = not missing
         return {

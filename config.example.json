@@ -34,5 +34,10 @@
     "download_dir": "./downloads/bilibili",
     "quality": 80,
     "timeout": 120
+  },
+  "playlist": {
+    "proxy": null,
+    "timeout": 30,
+    "default_limit": null
   }
 }

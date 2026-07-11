@@ -5,9 +5,9 @@
 ## 统一入口（优先）
 
 ```bash
-.venv/bin/python scripts/media_ctl.py call hybrid intent --param url='<链接>' --param intent='下载'
-.venv/bin/python scripts/media_ctl.py call hybrid parse --param url='<链接>'
-.venv/bin/python scripts/media_ctl.py call hybrid capabilities
+python3 scripts/media_ctl.py call hybrid intent --param url='<链接>' --param intent='下载'
+python3 scripts/media_ctl.py call hybrid parse --param url='<链接>'
+python3 scripts/media_ctl.py call hybrid capabilities
 ```
 
 `hybrid.intent` 会自动分流到 douyin / bilibili / tiktok。
@@ -39,10 +39,10 @@
 ## 查能力
 
 ```bash
-.venv/bin/python scripts/media_ctl.py call douyin capabilities
-.venv/bin/python scripts/media_ctl.py call bilibili capabilities
-.venv/bin/python scripts/media_ctl.py call tiktok capabilities
-.venv/bin/python scripts/media_ctl.py ops douyin
+python3 scripts/media_ctl.py call douyin capabilities
+python3 scripts/media_ctl.py call bilibili capabilities
+python3 scripts/media_ctl.py call tiktok capabilities
+python3 scripts/media_ctl.py ops douyin
 ```
 
 ## 原始 7899 全量（逃逸舱）
@@ -50,7 +50,7 @@
 本地服务 OpenAPI：`http://localhost:7899/docs`（约 66 条）。
 
 ```bash
-.venv/bin/python scripts/media_ctl.py call douyin api \
+python3 scripts/media_ctl.py call douyin api \
   --param path=/api/douyin/web/fetch_user_post_videos \
   --param sec_user_id=MS4wLjAB...
 ```

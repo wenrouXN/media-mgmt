@@ -56,15 +56,35 @@ def op_status(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict
 
 
 def op_search(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    """Search torrent resources via mp_api.
+
+    Prefer: --tmdbid / --mediaid flags (never positional tmdb:ID).
+    Optional: title, media_type, year, season, sites.
+    Episode filtering is done by the search workflow / pick, not mp_api search.
+    """
     title = params.get("title") or params.get("q")
     tmdbid = params.get("tmdbid")
-    if tmdbid:
-        media_type = params.get("media_type") or "tv"
-        # mp_api search uses mediaid path via search subcommand
-        return run_mp_api(["search", f"tmdb:{tmdbid}"])
+    mediaid = params.get("mediaid")
+    if tmdbid or mediaid:
+        args = ["search"]
+        if mediaid:
+            args += ["--mediaid", str(mediaid)]
+        else:
+            args += ["--tmdbid", str(tmdbid)]
+        if title:
+            args += ["--title", str(title)]
+        if params.get("media_type"):
+            args += ["--media-type", str(params["media_type"])]
+        if params.get("year"):
+            args += ["--year", str(params["year"])]
+        if params.get("season") is not None:
+            args += ["--season", str(params["season"])]
+        if params.get("sites"):
+            args += ["--sites", str(params["sites"])]
+        return run_mp_api(args, timeout=float(params.get("timeout") or 180))
     if not title:
         return {"success": False, "error": "missing_param", "need": "title|tmdbid"}
-    return run_mp_api(["title", str(title)])
+    return run_mp_api(["title", str(title)], timeout=float(params.get("timeout") or 180))
 
 
 def op_download(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:

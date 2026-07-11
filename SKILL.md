@@ -1,6 +1,6 @@
 ---
 name: media-mgmt
-description: "管理媒体服务与资源链路（MoviePilot/下载器/HDHive/115/音乐/抖音/B站/TikTok）：认片(tmdb)、搜下影视、订阅、库内是否已有/缺集更新/播出档期追更/质量升级、重复整理建议、下载进度、115转存、短链处理、听歌候选确认、服务体检。用户说我要看/找/下载/听、有没有更新、库里有没有、是不是重复、画质不好/要4K中字、这是哪部、丢抖音/B站/115链接，或管理媒体服务时使用。"
+description: "管理媒体服务与资源链路（MoviePilot/下载器/HDHive/115/音乐/抖音/B站/TikTok）：认片(tmdb)、搜下影视、订阅、库内是否已有/缺集更新/播出档期追更/质量升级、重复整理建议、下载进度、115转存、短链处理、听歌候选确认、公共歌单链接解析(网易云/QQ/酷我/酷狗)、服务体检。用户说我要看/找/下载/听、解析歌单、有没有更新、库里有没有、是不是重复、画质不好/要4K中字、这是哪部、丢抖音/B站/115/歌单链接，或管理媒体服务时使用。"
 ---
 
 # 媒体资源管理
@@ -28,16 +28,16 @@ providers/*              # 同质获取源（TG 音乐 / 抖音 / B 站）
 
 ```bash
 cd /path/to/media-mgmt
-.venv/bin/python scripts/media_ctl.py list
-.venv/bin/python scripts/media_ctl.py workflows
-.venv/bin/python scripts/media_ctl.py run doctor
-.venv/bin/python scripts/media_ctl.py run library --param title=金特务：本色回归
-.venv/bin/python scripts/media_ctl.py run updates --param title=金特务：本色回归
-.venv/bin/python scripts/media_ctl.py run duplicates --param title=金特务：本色回归 --param tmdbid=296206
-.venv/bin/python scripts/media_ctl.py run watch --param title=金特务 --param episode=5 --param dry_run=true
-.venv/bin/python scripts/media_ctl.py run link --param url='https://v.douyin.com/xxx' --param intent=下载
-.venv/bin/python scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=***'
-.venv/bin/python scripts/media_ctl.py call moviepilot clients
+python3 scripts/media_ctl.py list
+python3 scripts/media_ctl.py workflows
+python3 scripts/media_ctl.py run doctor
+python3 scripts/media_ctl.py run library --param title=金特务：本色回归
+python3 scripts/media_ctl.py run updates --param title=金特务：本色回归
+python3 scripts/media_ctl.py run duplicates --param title=金特务：本色回归 --param tmdbid=296206
+python3 scripts/media_ctl.py run watch --param title=金特务 --param episode=5 --param dry_run=true
+python3 scripts/media_ctl.py run link --param url='https://v.douyin.com/xxx' --param intent=下载
+python3 scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=***'
+python3 scripts/media_ctl.py call moviepilot clients
 ```
 
 ### 固定 workflows
@@ -49,6 +49,7 @@ cd /path/to/media-mgmt
 | link | 短视频/B站链接 + 意图 |
 | share115 | 115 分享转存 |
 | listen | 听歌/下歌 |
+| playlist | 公共歌单链接解析 → 曲目 + listen queries |
 | doctor | 服务体检 |
 | search | 只搜候选 |
 | status | 下载/整理进度 |
@@ -69,10 +70,10 @@ cd /path/to/media-mgmt
 用户丢链接时用 **hybrid/intent**，不要只会 parse：
 
 ```bash
-.venv/bin/python scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/xxx' --param intent='下载'
-.venv/bin/python scripts/media_ctl.py call douyin capabilities
-.venv/bin/python scripts/media_ctl.py call bilibili capabilities
-.venv/bin/python scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_video_comments --param aweme_id=...
+python3 scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/xxx' --param intent='下载'
+python3 scripts/media_ctl.py call douyin capabilities
+python3 scripts/media_ctl.py call bilibili capabilities
+python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_video_comments --param aweme_id=...
 ```
 
 完整意图表：`references/link-intents.md`。上游全量约 66 接口见 `http://localhost:7899/docs`；具名 ops 覆盖常用，其余走 `op=api`。
@@ -83,11 +84,33 @@ cd /path/to/media-mgmt
 - 用户直接发 115 分享链接+密码 → `media_ctl run share115`（自动转存，无需二次确认）。
 - 模糊片名先 `media_ctl run identify` 定 tmdb_id，确认后再 search/watch。
 - 用户要找/看影视 → `media_ctl run watch`（内部也会 identify）；不要手搓 MoviePilot JSON。
-- 「库里有没有 / 有没有更新」→ `run library` / `run updates`。
+- **「咋还没有 / 缺集 / 有没有更新 / 第 N 集呢」→ 只跑 `run updates`（首选）**；需要下载队列再补 `run status`；要证明源站有没有货再 `run search --param episode=N` 或 `run watch --param dry_run=true`。**禁止**先 identify+library+subscribe 全量连打。
+- 「库里有没有」→ `run library`。
 - 「是不是重复、留哪个」→ `run duplicates`（只建议，不自动删）。
 - 用户要订阅影视 → `run subscribe`；先下已有资源，未完结再订。
 - 用户要下歌/音乐 → `run listen`（高置信直接下，多选需确认；`button_index` 确认后下）。
+- **公共歌单链接**（网易云/QQ/酷我/酷狗）→ `run playlist`（只解析元数据 + `queries`）；要下某几首再对 `queries[i]` 调 `run listen`，**不要**假装有批量下载 op。
 - 抖音/B站/TikTok 链接 → `run link`（intent=下载/解析/评论…）。
+
+### 缺集诊断路由（强制）
+
+用户说「第 N 集咋还没有 / 怎么还没更新」时：
+
+```bash
+# 1) 一条 updates 出结论：库缺集 + 档期 + 订阅 + 已播可下/未播改订
+python3 scripts/media_ctl.py run updates --param title=金特务 --param tmdbid=296206
+
+# 2) 可选：有没有在下 / 最近整理到哪
+python3 scripts/media_ctl.py run status --param tmdbid=296206 --param episode=6
+
+# 3) 可选：源站有没有这集（不下）
+python3 scripts/media_ctl.py run search --param tmdbid=296206 --param title=金特务：本色回归 --param episode=6
+# 或
+python3 scripts/media_ctl.py run watch --param tmdbid=296206 --param title=金特务：本色回归 --param episode=6 --param dry_run=true --param skip_hdhive=true
+```
+
+结论模板：已入库到哪 / 缺哪集 / 是否已播 / 订阅状态 / 有无下载任务 / 源站有无货。  
+**未确认下载前不要 `--yes`。** search/watch 失败时不要发明 `mp_api` 参数；修 workflow 或换 `run updates`。
 
 ## Config
 
@@ -106,6 +129,9 @@ cd /path/to/media-mgmt
 4. **完整 `torrent_info` + `media_info`**（enclosure / tmdb_id 等）
 5. **新剧搜索 fallback**：tmdb 搜空 → title / `SxxExx`
 6. **完成判定**：查 `history/transfer`，不要只看 download list。
+7. **诊断场景只先跑一个 workflow** — `updates` 优先；失败再补 `status`/`search`，禁止 identify+library+subscribe 扫射。
+8. **禁止发明 mp_api CLI 参数** — `search` 不支持位置参数 `tmdb:ID`，也不支持 `--episode`；集数过滤走 `run search --param episode=N` 或 `pick`。
+9. **watch 卡住** — stderr 有 `[watch] stage=...` 进度；HDHive 默认 90s 超时后继续 PT；workflow 默认总超时 420s。
 
 ## Workflows
 
@@ -115,9 +141,9 @@ cd /path/to/media-mgmt
 
 ```bash
 cd /path/to/media-mgmt
-.venv/bin/python3 scripts/watch.py "金部长" --episode 5 --yes
-.venv/bin/python3 scripts/watch.py "Agent Kim Reactivated" --season 1 --episode 5 --prefer pt --yes
-.venv/bin/python3 scripts/watch.py status --tmdbid 296206 --episode 5
+python3 scripts/watch.py "金部长" --episode 5 --yes
+python3 scripts/watch.py "Agent Kim Reactivated" --season 1 --episode 5 --prefer pt --yes
+python3 scripts/watch.py status --tmdbid 296206 --episode 5
 ```
 
 `watch.py` 固定流水线：
@@ -146,12 +172,12 @@ cd /path/to/media-mgmt
 ### 低层 MoviePilot REST（仅排障）
 
 ```bash
-.venv/bin/python3 scripts/mp_api.py identify "金特务" --media-type tv
-.venv/bin/python3 scripts/mp_api.py clients          # 下载器列表 + dashboard
-.venv/bin/python3 scripts/mp_api.py active           # 进行中任务
-.venv/bin/python3 scripts/mp_api.py status --tmdbid 296206 --episode 5
-.venv/bin/python3 scripts/mp_api.py pick --results-json candidates.json --episode 5
-.venv/bin/python3 scripts/mp_api.py download \
+python3 scripts/mp_api.py identify "金特务" --media-type tv
+python3 scripts/mp_api.py clients          # 下载器列表 + dashboard
+python3 scripts/mp_api.py active           # 进行中任务
+python3 scripts/mp_api.py status --tmdbid 296206 --episode 5
+python3 scripts/mp_api.py pick --results-json candidates.json --episode 5
+python3 scripts/mp_api.py download \
   --from-search-result candidate.json \
   --media-json media.json \
   --downloader QB
@@ -184,7 +210,7 @@ Endpoint 语义：
 
 ### Telegram music
 
-1. Run `.venv/bin/python3 scripts/telegram_music_bot.py --query "歌手 歌名"`.
+1. Run `python3 scripts/telegram_music_bot.py --query "歌手 歌名"`.
 2. `button_index=1` 不一定是原版；需要时用 `--button-index N`。
 3. Return downloaded file path; if sending back to chat, use file attachment rather than media directive for FLAC.
 
@@ -206,6 +232,16 @@ Endpoint 语义：
 
 ## Dependencies & Setup
 
+**不用 per-skill 虚拟环境。** 统一用系统/用户级 `python3`（`~/.local` site-packages）。
+
+```bash
+# 首次或依赖变更时（Debian/PEP668 环境）
+python3 -m pip install --user --break-system-packages -r requirements.txt
+
+# 日常直接跑
+python3 scripts/media_ctl.py run doctor
+```
+
 ### Douyin_TikTok_Download_API
 
 ```bash
@@ -214,13 +250,11 @@ docker run -d --name douyin-api -p 7899:8080 evil0ctal/douyin_tiktok_download_ap
 
 ### Telegram Music Bot
 
-```bash
-cd /path/to/media-mgmt
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-```
+依赖见 `requirements.txt`（telethon 等），装到用户级 Python 后：
 
-必须使用 `.venv/bin/python3` 运行。
+```bash
+python3 scripts/telegram_music_bot.py --query "歌手 歌名"
+```
 
 ## Command reference
 

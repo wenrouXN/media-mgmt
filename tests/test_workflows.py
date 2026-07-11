@@ -22,6 +22,7 @@ REQUIRED = {
     "hdhive",
     "retry",
     "upgrade",
+    "playlist",
 }
 
 

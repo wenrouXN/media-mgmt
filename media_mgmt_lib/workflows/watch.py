@@ -14,9 +14,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     title = params.get("title")
     if not title and not params.get("tmdbid"):
         return fail("missing_param", need="title")
-    py = ROOT / ".venv" / "bin" / "python"
-    exe = str(py) if py.exists() else sys.executable
-    cmd = [exe, str(ROOT / "scripts" / "watch.py")]
+    cmd = [sys.executable, str(ROOT / "scripts" / "watch.py")]
     if title:
         cmd.append(str(title))
     for key, flag in (
@@ -33,6 +31,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         ("wait", "--wait"),
         ("hdr_mode", "--hdr-mode"),
         ("site_priority", "--site-priority"),
+        ("hdhive_timeout", "--hdhive-timeout"),
     ):
         if params.get(key) not in (None, ""):
             cmd += [flag, str(params[key])]
@@ -53,7 +52,8 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         cmd.append("--subscribe")
     if params.get("hdhive_only") in (True, "true", "1", "yes"):
         cmd.append("--hdhive-only")
-    proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=float(params.get("timeout") or 900))
+    # Default 420s: identify+hdhive(90)+pt searches should finish; override with timeout=
+    proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=float(params.get("timeout") or 420))
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()
     parsed = None

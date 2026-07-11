@@ -16,7 +16,8 @@ def test_requirements_declares_runtime_and_test_dependencies():
     assert {"telethon", "python-dotenv", "websockets", "pytest"} <= packages
 
 
-def test_gitignore_excludes_local_virtualenv():
+def test_gitignore_excludes_legacy_virtualenv_dir():
+    """Legacy .venv dirs must stay gitignored; runtime uses host python3 only."""
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert ".venv/" in {line.strip() for line in gitignore}
 

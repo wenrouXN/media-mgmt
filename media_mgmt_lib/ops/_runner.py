@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def python_exe() -> str:
-    venv = ROOT / ".venv" / "bin" / "python"
-    return str(venv) if venv.exists() else sys.executable
+    """Always use host Python (no per-skill venv)."""
+    return sys.executable
 
 
 def run_json(args: list[str], *, timeout: float = 300, cwd: Path | None = None) -> dict[str, Any]:

@@ -6,27 +6,32 @@ All commands assume the skill root:
 cd /path/to/media-mgmt
 ```
 
-Prefer `.venv/bin/python` when available. Runtime defaults: local `config.json`. Service catalog: `services/*.json`.
+Always use host `python3` (no per-skill `.venv`). Runtime defaults: local `config.json`. Service catalog: `services/*.json`.
+
+Deps once: `python3 -m pip install --user --break-system-packages -r requirements.txt`
 
 ## Control plane
 
 ```bash
-.venv/bin/python scripts/media_ctl.py list
-.venv/bin/python scripts/media_ctl.py workflows
-.venv/bin/python scripts/media_ctl.py run doctor
-.venv/bin/python scripts/media_ctl.py run library --param title=金特务：本色回归
-.venv/bin/python scripts/media_ctl.py run updates --param title=金特务：本色回归
-.venv/bin/python scripts/media_ctl.py run duplicates --param title=金特务：本色回归 --param tmdbid=296206
-.venv/bin/python scripts/media_ctl.py run watch --param title=金特务 --param episode=5 --param dry_run=true
-.venv/bin/python scripts/media_ctl.py run link --param url='https://v.douyin.com/...' --param intent=下载
-.venv/bin/python scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=***'
-.venv/bin/python scripts/media_ctl.py run listen --param q=歌名
-.venv/bin/python scripts/media_ctl.py run subscribe --param title=金特务 --param action=check
-.venv/bin/python scripts/media_ctl.py health moviepilot
-.venv/bin/python scripts/media_ctl.py ops moviepilot
-.venv/bin/python scripts/media_ctl.py call moviepilot clients
-.venv/bin/python scripts/media_ctl.py call moviepilot missing_episodes --param title=金特务：本色回归
-.venv/bin/python scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/...' --param intent=下载
+python3 scripts/media_ctl.py list
+python3 scripts/media_ctl.py workflows
+python3 scripts/media_ctl.py run doctor
+python3 scripts/media_ctl.py run library --param title=金特务：本色回归
+python3 scripts/media_ctl.py run updates --param title=金特务：本色回归
+python3 scripts/media_ctl.py run duplicates --param title=金特务：本色回归 --param tmdbid=296206
+python3 scripts/media_ctl.py run watch --param title=金特务 --param episode=5 --param dry_run=true
+python3 scripts/media_ctl.py run link --param url='https://v.douyin.com/...' --param intent=下载
+python3 scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=***'
+python3 scripts/media_ctl.py run listen --param q=歌名
+python3 scripts/media_ctl.py run playlist --param url='https://music.163.com/#/playlist?id=...'
+python3 scripts/media_ctl.py call playlist parse --param url='https://y.qq.com/n/ryqq/playlist/...'
+python3 scripts/playlist_parse.py --url 'https://music.163.com/#/playlist?id=...' --limit 20
+python3 scripts/media_ctl.py run subscribe --param title=金特务 --param action=check
+python3 scripts/media_ctl.py health moviepilot
+python3 scripts/media_ctl.py ops moviepilot
+python3 scripts/media_ctl.py call moviepilot clients
+python3 scripts/media_ctl.py call moviepilot missing_episodes --param title=金特务：本色回归
+python3 scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/...' --param intent=下载
 ```
 
 Fixed workflows: `references/workflows.md`. Link intents: `references/link-intents.md`.
@@ -67,14 +72,14 @@ PY
 
 ```bash
 # 识别 + 搜索 + 选种 + 下载
-.venv/bin/python3 scripts/watch.py "金部长" --episode 5 --yes
-.venv/bin/python3 scripts/watch.py "Agent Kim Reactivated" --season 1 --episode 5 --prefer pt --yes
+python3 scripts/watch.py "金部长" --episode 5 --yes
+python3 scripts/watch.py "Agent Kim Reactivated" --season 1 --episode 5 --prefer pt --yes
 
 # 只演练不下载
-.venv/bin/python3 scripts/watch.py "金特务" --episode 5 --dry-run
+python3 scripts/watch.py "金特务" --episode 5 --dry-run
 
 # 查状态（进行中任务 + 整理历史）
-.venv/bin/python3 scripts/watch.py status --tmdbid 296206 --episode 5
+python3 scripts/watch.py status --tmdbid 296206 --episode 5
 ```
 
 说明：
@@ -170,10 +175,10 @@ Unlock 三步：点「确定解锁」→ 点确认对话框「确定」→ 点 1
 
 ## Telegram 音乐下载
 
-> **运行环境**：所有命令必须使用 `.venv/bin/python3`，确保 telethon 等依赖可用。
+> **运行环境**：所有命令必须使用 `python3`，确保 telethon 等依赖可用。
 
 ```bash
-.venv/bin/python3 scripts/telegram_music_bot.py --query "梁静茹 勇气"
+python3 scripts/telegram_music_bot.py --query "梁静茹 勇气"
 ```
 
 Override defaults only when needed:
@@ -191,10 +196,10 @@ python3 scripts/telegram_music_bot.py \
 
 ```bash
 # 解析视频元数据（含章节/chapters）
-.venv/bin/python3 scripts/douyin.py parse "https://v.douyin.com/xxx" --json
+python3 scripts/douyin.py parse "https://v.douyin.com/xxx" --json
 
 # 下载视频
-.venv/bin/python3 scripts/douyin.py download "https://v.douyin.com/xxx"
+python3 scripts/douyin.py download "https://v.douyin.com/xxx"
 ```
 
 依赖 Douyin_TikTok_Download_API 后端（默认 `http://localhost:7899`）。
@@ -203,18 +208,18 @@ python3 scripts/telegram_music_bot.py \
 
 ```bash
 # 解析视频元数据
-.venv/bin/python3 scripts/bilibili.py parse "https://www.bilibili.com/video/BVxxx" --json
+python3 scripts/bilibili.py parse "https://www.bilibili.com/video/BVxxx" --json
 
 # 下载视频（默认 1080P）
-.venv/bin/python3 scripts/bilibili.py download "https://www.bilibili.com/video/BVxxx"
+python3 scripts/bilibili.py download "https://www.bilibili.com/video/BVxxx"
 
 # 指定画质：120=4K, 80=1080P, 64=720P
-.venv/bin/python3 scripts/bilibili.py download "https://www.bilibili.com/video/BVxxx" --quality 120
+python3 scripts/bilibili.py download "https://www.bilibili.com/video/BVxxx" --quality 120
 ```
 
 下载原理：API 返回 DASH 视频流+音频流 → ffmpeg 合并为 mp4。需要设置 Referer: https://www.bilibili.com
 
 
 ```bash
-.venv/bin/python scripts/media_ctl.py run upgrade --param tmdbid=296206 --param resolution=2160p --param hdr_mode=sdr --param require_chinese=true --param dry_run=true
+python3 scripts/media_ctl.py run upgrade --param tmdbid=296206 --param resolution=2160p --param hdr_mode=sdr --param require_chinese=true --param dry_run=true
 ```

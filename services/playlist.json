@@ -1,0 +1,16 @@
+{
+  "id": "playlist",
+  "name": "Public Playlist Parser",
+  "kind": "metadata",
+  "description": "Parse public playlist URLs (netease/qq/kuwo/kugou) into track metadata + listen queries",
+  "config_section": "playlist",
+  "required_config": [],
+  "ops": [
+    "capabilities",
+    "parse"
+  ],
+  "health": {
+    "type": "always_ok",
+    "note": "parse-only public APIs; no required credentials"
+  }
+}

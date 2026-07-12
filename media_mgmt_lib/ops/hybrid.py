@@ -26,6 +26,8 @@ def detect_platform(url: str) -> str:
         return "tiktok"
     if "douyin.com" in u or "iesdouyin.com" in u or "v.douyin.com" in u:
         return "douyin"
+    if "hongguoduanju.com" in u:
+        return "hongguo"
     return "unknown"
 
 
@@ -86,6 +88,10 @@ def op_intent(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict
         from media_mgmt_lib.ops import tiktok as tt_ops
 
         return tt_ops.op_intent(svc, cfg, params)
+    if platform == "hongguo":
+        from media_mgmt_lib.ops import hongguo as hg_ops
+
+        return hg_ops.op_intent(svc, cfg, params)
     if any(k in intent for k in ("下载", "download", "保存")):
         return op_download(svc, cfg, params)
     return op_parse(svc, cfg, params)

@@ -62,10 +62,11 @@ python3 scripts/media_ctl.py call moviepilot clients
 | duplicates | 同集多版本，建议保留谁（默认不删） |
 | hdhive | HDHive 搜解锁转存 |
 | retry | 失败换源重试 |
+| cancel | 下错撤回：取消活动下载（hash/title/tmdb/episode） |
 
 详情：`references/workflows.md`。`media_ctl ops` 查服务操作；非上表场景 → agent 自由 `call` ops。
 
-### 抖音 / B站 / TikTok 链接（必看）
+### 抖音 / B站 / TikTok / 红果短剧 链接（必看）
 
 用户丢链接时用 **hybrid/intent**，不要只会 parse：
 
@@ -73,7 +74,19 @@ python3 scripts/media_ctl.py call moviepilot clients
 python3 scripts/media_ctl.py call hybrid intent --param url='https://v.douyin.com/xxx' --param intent='下载'
 python3 scripts/media_ctl.py call douyin capabilities
 python3 scripts/media_ctl.py call bilibili capabilities
+python3 scripts/media_ctl.py call hongguo capabilities
 python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_video_comments --param aweme_id=...
+```
+
+红果短剧（hongguoduanju.com）：
+
+```bash
+# 解析剧集信息
+python3 scripts/hongguo.py parse 'https://hongguoduanju.com/detail?series_id=xxx'
+# 列出集数
+python3 scripts/hongguo.py list_episodes 'https://hongguoduanju.com/detail?series_id=xxx'
+# 下载第 3 集
+python3 scripts/hongguo.py download 'https://hongguoduanju.com/player/xxx/yyy' --episode 3
 ```
 
 完整意图表：`references/link-intents.md`。上游全量约 66 接口见 `http://localhost:7899/docs`；具名 ops 覆盖常用，其余走 `op=api`。
@@ -84,6 +97,8 @@ python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_
 - 用户直接发 115 分享链接+密码 → `media_ctl run share115`（自动转存，无需二次确认）。
 - 模糊片名先 `media_ctl run identify` 定 tmdb_id，确认后再 search/watch。
 - 用户要找/看影视 → `media_ctl run watch`（内部也会 identify）；不要手搓 MoviePilot JSON。
+- **防误下（强制）**：选种会校验 **资源年份（title year vs media year）** 与 **种子发布日 pubdate**；年份不对 / 发布过旧 / 0~1 seeder / 缺 pubdate 时，即使 `--yes` 也会返回 `safety_confirmation_required`，必须把候选（含 `pubdate`/`title_year`/`seeders`）亮给用户，用户确认后再 `--force --yes` 或 `--pick-index N --force --yes`。
+- **下错撤回**：用户说下错了/不是这个/取消下载 → `media_ctl run cancel --param title=...`（或 `tmdbid`/`hash`/`episode`）；需要连文件一起删再加 `delete_files=true`。先 `run status`/`call moviepilot active` 核对。
 - **「咋还没有 / 缺集 / 有没有更新 / 第 N 集呢」→ 只跑 `run updates`（首选）**；需要下载队列再补 `run status`；要证明源站有没有货再 `run search --param episode=N` 或 `run watch --param dry_run=true`。**禁止**先 identify+library+subscribe 全量连打。
 - 「库里有没有」→ `run library`。
 - 「是不是重复、留哪个」→ `run duplicates`（只建议，不自动删）。
@@ -162,7 +177,10 @@ python3 scripts/watch.py status --tmdbid 296206 --episode 5
 
 | 参数 | 含义 |
 |------|------|
-| `--yes` / `--auto` | 自动下载 top1（agent 默认加） |
+| `--yes` / `--auto` | 自动下载 top1（agent 默认加；仍受安全门限制） |
+| `--force` | 绕过年份/发布日/低做种安全门（仍需 `--yes`） |
+| `--max-age-days N` | 种子 pubdate 超过 N 天视为过旧 |
+| `--ignore-freshness` | 不按 pubdate 新鲜度排序 |
 | `--dry-run` | 只识别/搜索/选种，不真正下载 |
 | `--pick-index N` | 选候选列表第 N 个 |
 | `--wait SEC` | 下载后轮询状态 |
@@ -176,12 +194,21 @@ python3 scripts/mp_api.py identify "金特务" --media-type tv
 python3 scripts/mp_api.py clients          # 下载器列表 + dashboard
 python3 scripts/mp_api.py active           # 进行中任务
 python3 scripts/mp_api.py status --tmdbid 296206 --episode 5
-python3 scripts/mp_api.py pick --results-json candidates.json --episode 5
+python3 scripts/mp_api.py pick --results-json candidates.json --episode 5 --media-year 2025
+python3 scripts/mp_api.py cancel --title "金特务" --episode 6 --dry-run
+python3 scripts/mp_api.py cancel --hash aa93e6f9 --delete-files
 python3 scripts/mp_api.py download \
   --from-search-result candidate.json \
   --media-json media.json \
   --downloader QB
 ```
+
+### 防误下 + 撤回（硬规则）
+
+1. **年份门**：title 里的 `19xx/20xx` 必须对齐 media year（有精确年份候选时，错年直接剔除）。
+2. **发布日门**：优先 `torrent_info.pubdate`；>30 天旧种、缺 pubdate、0~1 seeder → `needs_confirm`，自动 `--yes` 会被拦。
+3. **候选展示**：给用户时必须带 `title` / `title_year` / `pubdate` / `pubdate_age_days` / `seeders` / `site_name`。
+4. **撤回**：`run cancel`（或 `mp_api.py cancel` / `call moviepilot cancel`）。这是下载任务撤回，不是 QQ 消息撤回。
 
 Endpoint 语义：
 

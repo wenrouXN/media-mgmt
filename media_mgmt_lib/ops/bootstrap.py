@@ -11,3 +11,4 @@ import media_mgmt_lib.ops.tiktok  # noqa: F401
 import media_mgmt_lib.ops.hybrid  # noqa: F401
 import media_mgmt_lib.ops.cloakbrowser  # noqa: F401
 import media_mgmt_lib.ops.playlist  # noqa: F401
+import media_mgmt_lib.ops.hongguo  # noqa: F401

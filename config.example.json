@@ -39,5 +39,10 @@
     "proxy": null,
     "timeout": 30,
     "default_limit": null
+  },
+  "hongguo": {
+    "proxy": null,
+    "timeout": 30,
+    "download_dir": "./downloads/hongguo"
   }
 }

@@ -1,0 +1,22 @@
+{
+  "id": "hongguo",
+  "name": "Hongguo Short Drama (hongguoduanju.com)",
+  "kind": "content_provider",
+  "description": "Parse and download short dramas from hongguoduanju.com via public SSR data",
+  "config_section": "hongguo",
+  "required_config": [],
+  "ops": [
+    "health",
+    "capabilities",
+    "parse",
+    "info",
+    "list_episodes",
+    "download",
+    "intent"
+  ],
+  "health": {
+    "type": "http_get",
+    "url": "https://hongguoduanju.com",
+    "ok_status": [200, 301, 302]
+  }
+}

@@ -19,6 +19,7 @@ python3 scripts/media_ctl.py call hybrid capabilities
 | `douyin.com` / `v.douyin.com` / `iesdouyin.com` | douyin |
 | `bilibili.com` / `b23.tv` | bilibili |
 | `tiktok.com` | tiktok |
+| `hongguoduanju.com` | hongguo |
 | 说不清 | hybrid.parse（7899 hybrid 接口） |
 
 ## 意图 → op
@@ -34,6 +35,7 @@ python3 scripts/media_ctl.py call hybrid capabilities
 | 用户主页 / 博主 | `user_profile` / `get_sec_user_id` |
 | 作品列表 | `user_posts` |
 | 直播 | `live_*` / bilibili `live_room` |
+| 红果短剧 / hongguoduanju | hongguo `parse`（解析）/ `download`（下载）/ `list_episodes`（集数列表） |
 | 任意上游接口 | `api --param path=/api/...` |
 
 ## 查能力

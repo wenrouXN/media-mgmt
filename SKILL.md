@@ -78,15 +78,29 @@ python3 scripts/media_ctl.py call hongguo capabilities
 python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_video_comments --param aweme_id=...
 ```
 
-红果短剧（hongguoduanju.com）：
+红果短剧（`hongguoduanju.com` / `novelquickapp.com` 分享短链）：
+
+- **入口优先**：`hybrid intent`（自动识别红果域名并分流到 `hongguo`）
+- **支持链接**：详情页 / player 页 / `novelquickapp.com/s/...` 分享短链
+- **默认落盘**：`/vol02/1000-0-8501d321/torrents/TV/短剧`（`config.json` → `hongguo.download_dir`，可覆盖）
+- **能力边界**：公开 SSR + player 页解析；当前不依赖授权 API；锁定集可能无完整播放地址
+- **命名**：`{标题}-E{集号}.mp4`（如 `温柔失控-E01.mp4`）
 
 ```bash
-# 解析剧集信息
-python3 scripts/hongguo.py parse 'https://hongguoduanju.com/detail?series_id=xxx'
-# 列出集数
+# 统一入口（推荐）
+python3 scripts/media_ctl.py call hybrid intent --param url='https://novelquickapp.com/s/xxx' --param intent='下载'
+python3 scripts/media_ctl.py call hybrid intent --param url='https://hongguoduanju.com/detail?series_id=xxx' --param intent='解析'
+
+# 直调 hongguo
+python3 scripts/media_ctl.py call hongguo parse --param url='https://novelquickapp.com/s/xxx'
+python3 scripts/media_ctl.py call hongguo list_episodes --param url='https://hongguoduanju.com/detail?series_id=xxx'
+python3 scripts/media_ctl.py call hongguo download --param url='https://novelquickapp.com/s/xxx' --param episode=3
+
+# CLI 快捷
+python3 scripts/hongguo.py parse 'https://novelquickapp.com/s/xxx'
 python3 scripts/hongguo.py list_episodes 'https://hongguoduanju.com/detail?series_id=xxx'
-# 下载第 3 集
-python3 scripts/hongguo.py download 'https://hongguoduanju.com/player/xxx/yyy' --episode 3
+python3 scripts/hongguo.py download 'https://novelquickapp.com/s/xxx' --episode 3
+python3 scripts/hongguo.py download 'https://novelquickapp.com/s/xxx' --download-dir '/path/to/dir'  # 覆盖默认目录
 ```
 
 完整意图表：`references/link-intents.md`。上游全量约 66 接口见 `http://localhost:7899/docs`；具名 ops 覆盖常用，其余走 `op=api`。
@@ -106,6 +120,7 @@ python3 scripts/hongguo.py download 'https://hongguoduanju.com/player/xxx/yyy' -
 - 用户要下歌/音乐 → `run listen`（高置信直接下，多选需确认；`button_index` 确认后下）。
 - **公共歌单链接**（网易云/QQ/酷我/酷狗）→ `run playlist`（只解析元数据 + `queries`）；要下某几首再对 `queries[i]` 调 `run listen`，**不要**假装有批量下载 op。
 - 抖音/B站/TikTok 链接 → `run link`（intent=下载/解析/评论…）。
+- 红果短剧链接（hongguoduanju / novelquickapp）→ `hybrid intent` 或 `call hongguo download`；默认目录 `TV/短剧`。
 
 ### 缺集诊断路由（强制）
 

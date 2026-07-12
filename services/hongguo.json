@@ -1,8 +1,8 @@
 {
   "id": "hongguo",
-  "name": "Hongguo Short Drama (hongguoduanju.com)",
+  "name": "Hongguo Short Drama (hongguoduanju / novelquickapp)",
   "kind": "content_provider",
-  "description": "Parse and download short dramas from hongguoduanju.com via public SSR data",
+  "description": "Parse and download short dramas from hongguoduanju.com / novelquickapp.com via public SSR; default dir TV/短剧",
   "config_section": "hongguo",
   "required_config": [],
   "ops": [

@@ -22,7 +22,11 @@ from media_mgmt_lib.providers.hongguo import parser as hg
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Hongguo short-drama parser and downloader (hongguoduanju.com)",
+        description=(
+            "Hongguo short-drama parser/downloader "
+            "(hongguoduanju.com / novelquickapp.com share links; "
+            "default download_dir: /vol02/1000-0-8501d321/torrents/TV/短剧)"
+        ),
     )
     p.add_argument(
         "action", nargs="?", default="parse",

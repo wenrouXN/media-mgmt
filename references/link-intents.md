@@ -1,6 +1,6 @@
 # 链接意图路由（agent 必读）
 
-用户丢来抖音 / B 站 / TikTok 链接时：**不要只 parse**。先识别平台，再按用户说的意图选 op。
+用户丢来抖音 / B 站 / TikTok / 红果短剧 链接时：**不要只 parse**。先识别平台，再按用户说的意图选 op。
 
 ## 统一入口（优先）
 
@@ -10,7 +10,7 @@ python3 scripts/media_ctl.py call hybrid parse --param url='<链接>'
 python3 scripts/media_ctl.py call hybrid capabilities
 ```
 
-`hybrid.intent` 会自动分流到 douyin / bilibili / tiktok。
+`hybrid.intent` 会自动分流到 douyin / bilibili / tiktok / **hongguo**。
 
 ## 平台识别
 
@@ -35,8 +35,24 @@ python3 scripts/media_ctl.py call hybrid capabilities
 | 用户主页 / 博主 | `user_profile` / `get_sec_user_id` |
 | 作品列表 | `user_posts` |
 | 直播 | `live_*` / bilibili `live_room` |
-| 红果短剧 / hongguoduanju | hongguo `parse`（解析）/ `download`（下载）/ `list_episodes`（集数列表） |
+| 红果短剧 / hongguoduanju / novelquickapp | hongguo `parse`（解析）/ `info` / `list_episodes`（集数列表）/ `download`（下载） |
 | 任意上游接口 | `api --param path=/api/...` |
+
+### 红果短剧补充
+
+| 项 | 说明 |
+|----|------|
+| 域名 | `hongguoduanju.com`、`novelquickapp.com`（分享短链会 302 到 SSR） |
+| 默认目录 | `/vol02/1000-0-8501d321/torrents/TV/短剧` |
+| 配置键 | `hongguo.download_dir` / `proxy` / `timeout` |
+| 输出名 | `{标题}-E{集号}.mp4` |
+| 限制 | 公开 SSR；锁定集可能无完整 URL；未接授权 API |
+
+```bash
+python3 scripts/media_ctl.py call hybrid intent --param url='https://novelquickapp.com/s/xxx' --param intent='下载'
+python3 scripts/media_ctl.py call hongguo download --param url='https://novelquickapp.com/s/xxx' --param episode=1
+python3 scripts/hongguo.py download 'https://novelquickapp.com/s/xxx' --episode 1
+```
 
 ## 查能力
 
@@ -44,7 +60,9 @@ python3 scripts/media_ctl.py call hybrid capabilities
 python3 scripts/media_ctl.py call douyin capabilities
 python3 scripts/media_ctl.py call bilibili capabilities
 python3 scripts/media_ctl.py call tiktok capabilities
+python3 scripts/media_ctl.py call hongguo capabilities
 python3 scripts/media_ctl.py ops douyin
+python3 scripts/media_ctl.py ops hongguo
 ```
 
 ## 原始 7899 全量（逃逸舱）

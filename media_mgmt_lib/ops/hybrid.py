@@ -26,7 +26,7 @@ def detect_platform(url: str) -> str:
         return "tiktok"
     if "douyin.com" in u or "iesdouyin.com" in u or "v.douyin.com" in u:
         return "douyin"
-    if "hongguoduanju.com" in u:
+    if "hongguoduanju.com" in u or "novelquickapp.com" in u:
         return "hongguo"
     return "unknown"
 

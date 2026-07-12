@@ -19,7 +19,7 @@ python3 scripts/media_ctl.py call hybrid capabilities
 | `douyin.com` / `v.douyin.com` / `iesdouyin.com` | douyin |
 | `bilibili.com` / `b23.tv` | bilibili |
 | `tiktok.com` | tiktok |
-| `hongguoduanju.com` | hongguo |
+| `hongguoduanju.com` / `novelquickapp.com` | hongguo |
 | 说不清 | hybrid.parse（7899 hybrid 接口） |
 
 ## 意图 → op

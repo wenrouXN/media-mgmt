@@ -44,6 +44,9 @@ DEFAULT_TIMEOUT = 30
 LOCAL_PROXY_EXAMPLE = "http://127.0.0.1:7890"
 
 BASE_URL = "https://hongguoduanju.com"
+# novelquickapp.com is the share-link domain for 红果短剧 (Hongguo).
+# Its SSR uses `series_data` inside `pageData` instead of `seriesDetail`.
+_SHARE_DOMAINS = {"novelquickapp.com", "hongguoduanju.com"}
 
 
 class ParseError(RuntimeError):
@@ -177,13 +180,34 @@ def _extract_router_data(html: str) -> dict[str, Any]:
         raise ParseError(f"invalid _ROUTER_DATA JSON: {exc}") from exc
 
 
+def _is_supported_host(netloc: str) -> bool:
+    return any(d in netloc for d in _SHARE_DOMAINS)
+
+
 def _series_id_from_url(url: str) -> str:
     parsed = urlparse(url)
-    if parsed.scheme in ("http", "https") and "hongguoduanju.com" not in parsed.netloc:
+    if parsed.scheme in ("http", "https") and not _is_supported_host(parsed.netloc):
         raise ParseError(f"unsupported host: {parsed.netloc!r}")
     query = parse_qs(parsed.query)
     if "series_id" in query and query["series_id"]:
         return str(query["series_id"][0])
+    # novelquickapp share links carry video_series_id in schemeParams
+    zlink = query.get("zlink", [""])[0]
+    if zlink:
+        inner = parse_qs(urlparse(zlink).query).get("schemeParams", [""])[0]
+        if inner:
+            try:
+                sp = json.loads(inner)
+                sid = sp.get("video_series_id")
+                if sid:
+                    return str(sid)
+            except (json.JSONDecodeError, ValueError):
+                pass
+    # novelquickapp short links: extract series_id from redirect target
+    if "novelquickapp.com" in parsed.netloc:
+        match = re.search(r"video_series_id[^\d]*(\d{10,})", url)
+        if match:
+            return match.group(1)
     match = re.search(r"/player/(\d+)", parsed.path)
     if match:
         return match.group(1)
@@ -193,12 +217,26 @@ def _series_id_from_url(url: str) -> str:
     raise ParseError(f"could not extract series_id from {url!r}")
 
 
+def _extract_series_id_from_html(html: str, url: str) -> str:
+    """Extract series_id from the SSR HTML when URL parsing fails."""
+    # Try from zlink in the redirect URL
+    match = re.search(r"video_series_id[^\d]*(\d{10,})", html)
+    if match:
+        return match.group(1)
+    # Try from schemeParams in JSON
+    match = re.search(r'"video_series_id":\s*"(\d+)"', html)
+    if match:
+        return match.group(1)
+    return _series_id_from_url(url)
+
+
 def _vid_from_url(url: str) -> str | None:
     match = re.search(r"/player/\d+/(\d+)", urlparse(url).path)
     return match.group(1) if match else None
 
 
-def _normalise_series(sd: dict[str, Any], req: dict[str, Any]) -> dict[str, Any]:
+def _normalise_series_from_detail(sd: dict[str, Any], req: dict[str, Any]) -> dict[str, Any]:
+    """Normalise hongguoduanju.com `seriesDetail` format."""
     vid_list = [str(value) for value in (sd.get("vid_list") or []) if value]
     if not vid_list:
         raise ParseError("seriesDetail.vid_list missing")
@@ -221,6 +259,47 @@ def _normalise_series(sd: dict[str, Any], req: dict[str, Any]) -> dict[str, Any]
     }
 
 
+def _normalise_series_from_share(
+    page_data: dict[str, Any],
+    series_id: str,
+) -> dict[str, Any]:
+    """Normalise novelquickapp.com share-page format.
+
+    ``page_data`` is the full ``pageData`` dict from loaderData, which contains
+    both ``series_data`` (metadata) and ``chapter_ids`` (episode list).
+    ``series_id`` is pre-extracted from the URL's ``zlink`` query parameter.
+    """
+    sd = page_data.get("series_data") or {}
+    vid_list = [str(v) for v in (page_data.get("chapter_ids") or sd.get("chapter_ids") or []) if v]
+    if not vid_list:
+        raise ParseError("pageData.chapter_ids missing")
+    serial_count = to_int(sd.get("serial_count"))
+    return {
+        "series_id": series_id,
+        "title": sd.get("title"),
+        "intro": sd.get("series_intro"),
+        "cover": sd.get("series_cover"),
+        "tags": list(sd.get("category_list") or sd.get("tags") or []),
+        "chapter_ids": vid_list,
+        "episode_count": serial_count or len(vid_list),
+        "accessible_episode_count": serial_count or len(vid_list),  # share page lists all
+        "content_type": "standard",
+        "web_id": None,
+        "uuid": None,
+        "celebrities": list(sd.get("actor_list") or []),
+        "play_url": sd.get("play_url"),  # first-episode play URL from share page
+        "source": "novelquickapp_share",
+    }
+
+
+def _normalise_series(sd: dict[str, Any], req: dict[str, Any]) -> dict[str, Any]:
+    """Try share-page format first, then detail-page format."""
+    # share-page indicator: has chapter_ids + title but no vid_list
+    if "chapter_ids" in sd and "vid_list" not in sd:
+        return _normalise_series_from_share(sd, req)
+    return _normalise_series_from_detail(sd, req)
+
+
 # ---------------------------------------------------------------------------
 # Public API used by hongguo_downloader.py
 # ---------------------------------------------------------------------------
@@ -232,42 +311,64 @@ def load_series_seed(
     *,
     timeout: int = DEFAULT_TIMEOUT,
 ) -> tuple[dict[str, Any], str, None]:
-    """Resolve a detail or player URL into the downloader's seed structure.
+    """Resolve a detail, player, or share URL into the downloader's seed structure.
 
     Returns a ``(series, referer, None)`` tuple.  ``series`` matches the keys
     ``run_download`` expects: ``series_id``, ``title``, ``chapter_ids``,
     ``episode_count``, ``accessible_episode_count``, ``content_type``,
     ``web_id``.
     """
-    series_id = _series_id_from_url(input_url)
-    initial_vid = _vid_from_url(input_url)
+    parsed = urlparse(input_url)
+    is_share_domain = any(d in parsed.netloc for d in _SHARE_DOMAINS)
 
-    if initial_vid:
-        target_url = f"{BASE_URL}/player/{series_id}/{initial_vid}"
-    else:
-        target_url = f"{BASE_URL}/detail?series_id={series_id}"
-
-    response = session.get(target_url, timeout=timeout, allow_redirects=True)
+    # For novelquickapp.com share links, just follow redirects to the SSR page
+    response = session.get(input_url, timeout=timeout, allow_redirects=True)
     response.raise_for_status()
     referer = response.url
     html = response.text
     data = _extract_router_data(html)
     loader = data.get("loaderData") or {}
 
+    # Try hongguoduanju.com format first: seriesDetail in loaderData
     page: dict[str, Any] | None = None
     for key, value in loader.items():
         if isinstance(value, dict) and "seriesDetail" in value:
             page = value
             break
-    if page is None:
-        raise ParseError(
-            f"no seriesDetail in loaderData keys={list(loader)}"
-        )
 
-    series = _normalise_series(page.get("seriesDetail") or {}, page.get("req") or {})
-
-    if initial_vid and initial_vid not in series["chapter_ids"]:
-        series["chapter_ids"] = [initial_vid, *series["chapter_ids"]]
+    if page is not None:
+        series = _normalise_series_from_detail(page.get("seriesDetail") or {}, page.get("req") or {})
+    else:
+        # Try novelquickapp.com share format: series_data + chapter_ids inside pageData
+        page_data: dict[str, Any] | None = None
+        for key, value in loader.items():
+            if isinstance(value, dict):
+                pd = value.get("pageData")
+                if isinstance(pd, dict) and ("series_data" in pd or "chapter_ids" in pd):
+                    page_data = pd
+                    break
+        if page_data is None:
+            raise ParseError(
+                f"no seriesDetail or pageData.series_data in loaderData keys={list(loader)}"
+            )
+        # Extract series_id from the redirect URL's zlink parameter
+        series_id = ""
+        redirect_url = response.url
+        redirect_query = parse_qs(urlparse(redirect_url).query)
+        zlink = redirect_query.get("zlink", [""])[0]
+        if zlink:
+            scheme_params = parse_qs(urlparse(zlink).query).get("schemeParams", [""])[0]
+            if scheme_params:
+                try:
+                    sp = json.loads(scheme_params)
+                    series_id = str(sp.get("video_series_id", ""))
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        if not series_id:
+            series_id = _extract_series_id_from_html(html, input_url)
+        if not series_id:
+            raise ParseError("could not determine series_id from share page")
+        series = _normalise_series_from_share(page_data, series_id)
 
     return series, referer, None
 
@@ -282,6 +383,7 @@ def request_player_for_vid(
     sleep: float = 0,
     validate_media: bool = True,
     min_url_ttl: int = 120,
+    base_url: str | None = None,
 ) -> dict[str, Any] | None:
     """Resolve one episode's full media URL via the public web SSR payload.
 
@@ -290,9 +392,10 @@ def request_player_for_vid(
     :class:`ParseError` when the page is malformed, the URL fails validation,
     or its TTL is shorter than ``min_url_ttl``.
     """
+    base = (base_url or BASE_URL).rstrip("/")
     session = make_session(proxy)
     try:
-        target = f"{BASE_URL}/player/{series_id}/{vid}"
+        target = f"{base}/player/{series_id}/{vid}"
         headers: dict[str, str] = {}
         if referer:
             headers["Referer"] = referer

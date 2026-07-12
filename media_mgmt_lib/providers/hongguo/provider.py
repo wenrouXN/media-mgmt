@@ -19,7 +19,7 @@ from typing import Any
 
 from . import parser as hg
 
-_DEFAULT_DOWNLOAD_DIR = Path("/tmp/hongguo")
+_DEFAULT_DOWNLOAD_DIR = Path("/vol02/1000-0-8501d321/torrents/TV/短剧")
 
 
 @dataclass

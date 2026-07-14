@@ -1,7 +1,9 @@
 # media-mgmt 公共歌单解析设计
 
 日期：2026-07-11  
-状态：approved（用户确认范围：只解析；批量听由 agent 自主调 `listen`）
+状态：approved（用户确认范围：只解析；批量听由 agent 自主调 `listen`）  
+
+> 历史设计稿。运行时以 `SKILL.md` + `references/workflows.md` + 代码为准；agent 默认不加载本文件。
 
 ## 1. 目标
 

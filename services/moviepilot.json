@@ -12,6 +12,7 @@
     "health",
     "clients",
     "active",
+    "cancel",
     "identify",
     "search",
     "download",

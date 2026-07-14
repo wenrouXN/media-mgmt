@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from media_mgmt_lib.quality_pref import quality_score, matches_quality, blob_of
@@ -38,6 +39,134 @@ def _text_blob(item: dict[str, Any], ti: dict[str, Any]) -> str:
         (item.get("meta_info") or {}).get("org_string") if isinstance(item.get("meta_info"), dict) else None,
     ]
     return " ".join(str(p) for p in parts if p)
+
+
+def _parse_dt(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        if ts > 1e12:
+            ts /= 1000.0
+        try:
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d",
+    ):
+        try:
+            return datetime.strptime(text[:19], fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def extract_title_year(text: str) -> int | None:
+    """Extract production/release year from torrent title-ish text."""
+    if not text:
+        return None
+    candidates: list[int] = []
+    for m in re.finditer(r"(?<![A-Za-z0-9])((?:19|20)\d{2})(?![A-Za-z0-9])", text):
+        candidates.append(int(m.group(1)))
+    if not candidates:
+        return None
+    # Prefer the last year token (often "... S01E06 2025 1080p ...")
+    return candidates[-1]
+
+
+def extract_pubdate(item: dict[str, Any], ti: dict[str, Any] | None = None) -> datetime | None:
+    ti = ti if ti is not None else _as_torrent_info(item)
+    for key in (
+        "pubdate",
+        "pub_date",
+        "publish_date",
+        "published_at",
+        "date",
+        "release_date",
+        "time",
+    ):
+        dt = _parse_dt(ti.get(key))
+        if dt is not None:
+            return dt
+        if isinstance(item, dict):
+            dt = _parse_dt(item.get(key))
+            if dt is not None:
+                return dt
+    return None
+
+
+def pubdate_age_days(item: dict[str, Any], *, now: datetime | None = None) -> float | None:
+    dt = extract_pubdate(item)
+    if dt is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return max(0.0, (now - dt).total_seconds() / 86400.0)
+
+
+def year_match_score(item: dict[str, Any], media_year: int | str | None) -> int:
+    """2 exact match, 1 unknown year, 0 mismatch, -1 no media year constraint."""
+    if media_year in (None, ""):
+        return -1
+    try:
+        want = int(str(media_year)[:4])
+    except (TypeError, ValueError):
+        return -1
+    ti = _as_torrent_info(item)
+    blob = _text_blob(item, ti)
+    got = extract_title_year(blob)
+    if got is None:
+        for key in ("year", "release_year"):
+            raw = ti.get(key) or (item.get(key) if isinstance(item, dict) else None)
+            if raw not in (None, ""):
+                try:
+                    got = int(str(raw)[:4])
+                    break
+                except (TypeError, ValueError):
+                    continue
+    if got is None:
+        return 1
+    return 2 if got == want else 0
+
+
+def freshness_score(
+    item: dict[str, Any],
+    *,
+    now: datetime | None = None,
+    max_age_days: float | None = None,
+) -> int:
+    """Higher is fresher. Unknown pubdate scores 0 so known-fresh wins.
+
+    If max_age_days is set and age exceeds it, score becomes -1 (stale hard signal).
+    """
+    age = pubdate_age_days(item, now=now)
+    if age is None:
+        return 0
+    if max_age_days is not None and age > float(max_age_days):
+        return -1
+    if age <= 1:
+        return 5
+    if age <= 3:
+        return 4
+    if age <= 7:
+        return 3
+    if age <= 14:
+        return 2
+    if age <= 30:
+        return 1
+    return 0
 
 
 def extract_episode(text: str) -> int | None:
@@ -117,12 +246,15 @@ def _covers_episode(text: str, episode: int) -> bool:
     return False
 
 
-
 def score_torrent(
     item: dict[str, Any],
     *,
     season: int | None = None,
     episode: int | None = None,
+    media_year: int | str | None = None,
+    prefer_fresh: bool = True,
+    max_age_days: float | None = None,
+    now: datetime | None = None,
     prefer_resolution: str = "1080p",
     site_priority: list[str] | None = None,
     require_chinese: bool = False,
@@ -130,7 +262,6 @@ def score_torrent(
 ) -> tuple[int, ...]:
     ti = _as_torrent_info(item)
     blob = _text_blob(item, ti)
-    blob_l = blob.lower()
     title = str(ti.get("title") or "")
     seeders = int(ti.get("seeders") or 0)
     dvf = ti.get("downloadvolumefactor")
@@ -160,11 +291,17 @@ def score_torrent(
                 site_score = max(site_score, len(site_priority) - i)
     has_enclosure = 1 if ti.get("enclosure") else 0
     hard = 1 if q.get("matches_hard") else 0
+    ymatch = year_match_score(item, media_year)
+    # normalize: -1 (no constraint) behaves as neutral 1 for ranking base
+    y_rank = 1 if ymatch < 0 else ymatch
+    fresh = freshness_score(item, now=now, max_age_days=max_age_days) if prefer_fresh else 0
     # higher tuple wins
     return (
+        y_rank,  # wrong year must lose hard
         hard,
         exact_ep,
         has_enclosure,
+        fresh,
         int(q.get("score") or 0),
         seeders,
         free,
@@ -178,6 +315,10 @@ def filter_and_rank(
     *,
     season: int | None = None,
     episode: int | None = None,
+    media_year: int | str | None = None,
+    prefer_fresh: bool = True,
+    max_age_days: float | None = None,
+    now: datetime | None = None,
     prefer_resolution: str = "1080p",
     site_priority: list[str] | None = None,
     require_chinese: bool = False,
@@ -187,6 +328,14 @@ def filter_and_rank(
 ) -> list[dict[str, Any]]:
     filtered = [it for it in items if matches_episode(it, season=season, episode=episode)]
     pool = filtered if filtered else list(items)
+    # Drop hard year mismatches when media_year known and any year-matching candidate exists.
+    if media_year not in (None, ""):
+        year_ok = [it for it in pool if year_match_score(it, media_year) != 0]
+        year_exact = [it for it in year_ok if year_match_score(it, media_year) == 2]
+        if year_exact:
+            pool = year_exact
+        elif year_ok:
+            pool = year_ok
     if hard_filter and (prefer_resolution or require_chinese or (hdr_mode or "any") != "any"):
         quality_pool = []
         for it in pool:
@@ -207,6 +356,10 @@ def filter_and_rank(
             it,
             season=season,
             episode=episode,
+            media_year=media_year,
+            prefer_fresh=prefer_fresh,
+            max_age_days=max_age_days,
+            now=now,
             prefer_resolution=prefer_resolution,
             site_priority=site_priority,
             require_chinese=require_chinese,
@@ -222,6 +375,10 @@ def pick_torrent(
     *,
     season: int | None = None,
     episode: int | None = None,
+    media_year: int | str | None = None,
+    prefer_fresh: bool = True,
+    max_age_days: float | None = None,
+    now: datetime | None = None,
     prefer_resolution: str = "1080p",
     site_priority: list[str] | None = None,
     require_chinese: bool = False,
@@ -233,6 +390,10 @@ def pick_torrent(
         items,
         season=season,
         episode=episode,
+        media_year=media_year,
+        prefer_fresh=prefer_fresh,
+        max_age_days=max_age_days,
+        now=now,
         prefer_resolution=prefer_resolution,
         site_priority=site_priority,
         require_chinese=require_chinese,
@@ -241,7 +402,13 @@ def pick_torrent(
         limit=max(top_n, 1),
     )
     if not ranked:
-        return {"selected": None, "candidates": [], "reason": "no_candidates"}
+        return {
+            "selected": None,
+            "candidates": [],
+            "reason": "no_candidates",
+            "needs_confirm": False,
+            "confirm_reasons": [],
+        }
     selected = ranked[0]
     # confidence: gap between top and second hard scores
     scores = [
@@ -249,6 +416,10 @@ def pick_torrent(
             it,
             season=season,
             episode=episode,
+            media_year=media_year,
+            prefer_fresh=prefer_fresh,
+            max_age_days=max_age_days,
+            now=now,
             prefer_resolution=prefer_resolution,
             site_priority=site_priority,
             require_chinese=require_chinese,
@@ -257,8 +428,11 @@ def pick_torrent(
         for it in ranked[:2]
     ]
     needs_confirm = False
-    if len(scores) >= 2 and scores[0][:4] == scores[1][:4]:
+    confirm_reasons: list[str] = []
+    # compare first 5 ranking dimensions (year/hard/ep/enclosure/fresh)
+    if len(scores) >= 2 and scores[0][:5] == scores[1][:5]:
         needs_confirm = True
+        confirm_reasons.append("close_top_scores")
     ti = _as_torrent_info(selected)
     q = quality_score(
         blob_of(ti.get("title"), _text_blob(selected, ti)),
@@ -268,6 +442,29 @@ def pick_torrent(
     )
     if not q.get("matches_hard"):
         needs_confirm = True
+        confirm_reasons.append("quality_soft_match")
+    ymatch = year_match_score(selected, media_year)
+    if ymatch == 0:
+        needs_confirm = True
+        confirm_reasons.append("year_mismatch")
+    elif ymatch == 1 and media_year not in (None, ""):
+        needs_confirm = True
+        confirm_reasons.append("year_unknown")
+    age = pubdate_age_days(selected, now=now)
+    if age is None and media_year not in (None, ""):
+        needs_confirm = True
+        confirm_reasons.append("pubdate_unknown")
+    elif age is not None and max_age_days is not None and age > float(max_age_days):
+        needs_confirm = True
+        confirm_reasons.append("pubdate_stale")
+    elif age is not None and age > 30:
+        # old seed even without hard max_age: confirm before auto download
+        needs_confirm = True
+        confirm_reasons.append("pubdate_old")
+    seeders = int(ti.get("seeders") or 0)
+    if seeders <= 1:
+        needs_confirm = True
+        confirm_reasons.append("low_seeders")
     return {
         "selected": selected,
         "candidates": ranked[:top_n],
@@ -275,12 +472,17 @@ def pick_torrent(
         "score": scores[0] if scores else None,
         "quality": q,
         "needs_confirm": needs_confirm,
+        "confirm_reasons": confirm_reasons,
+        "year_match": ymatch,
+        "pubdate_age_days": age,
     }
 
 
 def summarize_candidate(item: dict[str, Any]) -> dict[str, Any]:
     ti = _as_torrent_info(item)
     blob = _text_blob(item, ti)
+    pub = extract_pubdate(item, ti)
+    age = pubdate_age_days(item)
     return {
         "site_name": ti.get("site_name"),
         "title": ti.get("title"),
@@ -291,4 +493,8 @@ def summarize_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "episode": extract_episode(blob),
         "season": extract_season(blob),
         "page_url": ti.get("page_url"),
+        "title_year": extract_title_year(blob),
+        "pubdate": pub.strftime("%Y-%m-%d %H:%M:%S") if pub else (ti.get("pubdate") or None),
+        "date_elapsed": ti.get("date_elapsed"),
+        "pubdate_age_days": round(age, 2) if age is not None else None,
     }

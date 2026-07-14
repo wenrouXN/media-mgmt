@@ -29,6 +29,15 @@ def _http_get(url: str, timeout: float = 8.0) -> tuple[int | None, str, Any]:
 
 
 def _resolve_url(svc: Service, conf: dict[str, Any], health: dict[str, Any]) -> str | None:
+    # Static catalog URL (e.g. hongguo health probes the public site).
+    if health.get("url"):
+        url = str(health["url"]).rstrip("/")
+        path = health.get("path") or ""
+        if path:
+            if not path.startswith("/"):
+                path = "/" + path
+            return url + path
+        return url
     if health.get("url_from") == "config.url" and conf.get("url"):
         base = str(conf["url"]).rstrip("/")
     elif health.get("url_from") == "config.api_base_url" and conf.get("api_base_url"):

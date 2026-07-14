@@ -43,6 +43,6 @@
   "hongguo": {
     "proxy": null,
     "timeout": 30,
-    "download_dir": "/vol02/1000-0-8501d321/torrents/TV/短剧"
+    "download_dir": "./downloads/hongguo"
   }
 }

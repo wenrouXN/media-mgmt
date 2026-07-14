@@ -21,6 +21,7 @@ from media_mgmt_lib.workflows import duplicates as w_duplicates
 from media_mgmt_lib.workflows import hdhive as w_hdhive
 from media_mgmt_lib.workflows import retry as w_retry
 from media_mgmt_lib.workflows import upgrade as w_upgrade
+from media_mgmt_lib.workflows import cancel as w_cancel
 
 WorkflowFn = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -131,6 +132,12 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "fn": w_upgrade.run,
         "summary": "库内质量升级：默认 HDHive→115，再 PT；支持 4K/中文/SDR 过滤",
         "need": ["title|tmdbid"],
+        "fixed": True,
+    },
+    "cancel": {
+        "fn": w_cancel.run,
+        "summary": "下错撤回：取消活动下载（hash/title/tmdb/episode）",
+        "need": ["hash|title|tmdbid"],
         "fixed": True,
     },
 }

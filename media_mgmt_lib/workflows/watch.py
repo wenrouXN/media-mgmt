@@ -32,6 +32,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         ("hdr_mode", "--hdr-mode"),
         ("site_priority", "--site-priority"),
         ("hdhive_timeout", "--hdhive-timeout"),
+        ("max_age_days", "--max-age-days"),
     ):
         if params.get(key) not in (None, ""):
             cmd += [flag, str(params[key])]
@@ -52,6 +53,10 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         cmd.append("--subscribe")
     if params.get("hdhive_only") in (True, "true", "1", "yes"):
         cmd.append("--hdhive-only")
+    if params.get("ignore_freshness") in (True, "true", "1", "yes"):
+        cmd.append("--ignore-freshness")
+    if params.get("force") in (True, "true", "1", "yes"):
+        cmd.append("--force")
     # Default 420s: identify+hdhive(90)+pt searches should finish; override with timeout=
     proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=float(params.get("timeout") or 420))
     out = (proc.stdout or "").strip()

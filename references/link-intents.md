@@ -1,83 +1,71 @@
-# 链接意图路由（agent 必读）
+# 链接意图路由
 
-用户丢来抖音 / B 站 / TikTok / 红果短剧 链接时：**不要只 parse**。先识别平台，再按用户说的意图选 op。
+用户丢抖音 / B站 / TikTok / 红果链接：**不要只 parse**。先识别平台，再按意图选 op。
 
-## 统一入口（优先）
+## 统一入口
 
 ```bash
 python3 scripts/media_ctl.py call hybrid intent --param url='<链接>' --param intent='下载'
+python3 scripts/media_ctl.py run link --param url='<链接>' --param intent=下载
 python3 scripts/media_ctl.py call hybrid parse --param url='<链接>'
 python3 scripts/media_ctl.py call hybrid capabilities
 ```
 
-`hybrid.intent` 会自动分流到 douyin / bilibili / tiktok / **hongguo**。
+`hybrid.intent` 分流到 douyin / bilibili / tiktok / **hongguo**。
 
-## 平台识别
+## 平台
 
 | URL 特征 | service |
 |----------|---------|
-| `douyin.com` / `v.douyin.com` / `iesdouyin.com` | douyin |
-| `bilibili.com` / `b23.tv` | bilibili |
-| `tiktok.com` | tiktok |
-| `hongguoduanju.com` / `novelquickapp.com` | hongguo |
-| 说不清 | hybrid.parse（7899 hybrid 接口） |
+| douyin.com / v.douyin.com / iesdouyin.com | douyin |
+| bilibili.com / b23.tv | bilibili |
+| tiktok.com | tiktok |
+| hongguoduanju.com / novelquickapp.com | hongguo |
+| 说不清 | hybrid.parse |
 
 ## 意图 → op
 
 | 用户说法 | 优先 op |
 |----------|---------|
-| 解析 / 这是什么 / 信息 / 标题 | `parse` 或 `hybrid_video` |
-| 下载 / 保存 / 下下来 | `download`（provider 落盘，带文件名） |
-| 评论 | `comments`（抖音需 aweme_id；B 站需 bv_id，可从 url 抽） |
+| 解析 / 这是什么 / 标题 | `parse` / `hybrid_video` |
+| 下载 / 保存 | `download` |
+| 评论 | `comments`（需 aweme_id / bv_id） |
 | 弹幕 | bilibili `danmaku`（先 parse 拿 cid） |
-| 分 P | bilibili `parts` |
-| 播放地址 / 清晰度 | bilibili `playurl` |
-| 用户主页 / 博主 | `user_profile` / `get_sec_user_id` |
-| 作品列表 | `user_posts` |
-| 直播 | `live_*` / bilibili `live_room` |
-| 红果短剧 / hongguoduanju / novelquickapp | hongguo `parse`（解析）/ `info` / `list_episodes`（集数列表）/ `download`（下载） |
-| 任意上游接口 | `api --param path=/api/...` |
+| 分 P / 播放地址 | `parts` / `playurl` |
+| 主页 / 作品列表 | `user_profile` / `user_posts` |
+| 直播 | `live_*` |
+| 红果短剧 | hongguo `parse` / `info` / `list_episodes` / `download` |
+| 任意上游 | `api --param path=/api/...` |
 
-### 红果短剧补充
+## 红果短剧
 
 | 项 | 说明 |
 |----|------|
-| 域名 | `hongguoduanju.com`、`novelquickapp.com`（分享短链会 302 到 SSR） |
-| 默认目录 | `/vol02/1000-0-8501d321/torrents/TV/短剧` |
-| 配置键 | `hongguo.download_dir` / `proxy` / `timeout` |
-| 输出名 | `{标题}-E{集号}.mp4` |
-| 限制 | 公开 SSR；锁定集可能无完整 URL；未接授权 API |
+| 域名 | hongguoduanju.com、novelquickapp.com（短链 302→SSR） |
+| 默认目录 | config `hongguo.download_dir`（例：`.../torrents/TV/短剧`） |
+| 命名 | `{标题}-E{集号}.mp4` |
+| 限制 | 公开 SSR；锁定集可能无完整 URL |
 
 ```bash
 python3 scripts/media_ctl.py call hybrid intent --param url='https://novelquickapp.com/s/xxx' --param intent='下载'
-python3 scripts/media_ctl.py call hongguo download --param url='https://novelquickapp.com/s/xxx' --param episode=1
+python3 scripts/media_ctl.py call hongguo download --param url='...' --param episode=1
 python3 scripts/hongguo.py download 'https://novelquickapp.com/s/xxx' --episode 1
 ```
 
-## 查能力
+## 查能力 / 逃逸舱
 
 ```bash
 python3 scripts/media_ctl.py call douyin capabilities
 python3 scripts/media_ctl.py call bilibili capabilities
-python3 scripts/media_ctl.py call tiktok capabilities
 python3 scripts/media_ctl.py call hongguo capabilities
 python3 scripts/media_ctl.py ops douyin
-python3 scripts/media_ctl.py ops hongguo
+# OpenAPI: http://localhost:7899/docs
+python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_user_post_videos --param sec_user_id=...
 ```
 
-## 原始 7899 全量（逃逸舱）
+## Agent 顺序
 
-本地服务 OpenAPI：`http://localhost:7899/docs`（约 66 条）。
-
-```bash
-python3 scripts/media_ctl.py call douyin api \
-  --param path=/api/douyin/web/fetch_user_post_videos \
-  --param sec_user_id=MS4wLjAB...
-```
-
-## Agent 决策顺序
-
-1. 从消息提取 URL  
-2. `hybrid intent`（带用户原话当 intent）或按上表选 op  
-3. 缺 id（aweme_id/bv_id/cid）→ 先 parse / get_aweme_id  
-4. 仍不够 → `capabilities` 或 `api` 查上游  
+1. 提取 URL  
+2. `hybrid intent`（intent=用户原话）或上表选 op  
+3. 缺 id → 先 parse  
+4. 仍不够 → capabilities / raw api  

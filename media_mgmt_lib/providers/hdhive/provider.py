@@ -366,11 +366,61 @@ async def list_resources(detail_url):
         await ws.close()
 
 async def unlock_share(resource_url):
-    """Unlock one HDHive resource and return a 115 share URL with plaintext password."""
+    """Unlock one HDHive resource and return a 115 share URL with plaintext password.
+
+    Never return password=*** — callers treat that as unlock failure.
+    """
     ws = await get_ws()
     try:
         await cdp(ws, "Page.navigate", {"url": resource_url})
         await asyncio.sleep(5)
+
+        async def _extract_share() -> str | None:
+            # Prefer location.href, then anchor href, then HTML recovery.
+            cur_url = await val(ws, "location.href")
+            if cur_url and "/s/" in cur_url and "password=" in cur_url and _MASK not in cur_url:
+                return cur_url
+
+            raw = await val(
+                ws,
+                """(document.querySelector('a[href*="115.com/s/"], a[href*="115cdn.com/s/"]')?.href)
+                || (document.querySelector('input[value*="115.com/s/"], input[value*="115cdn.com/s/"]')?.value)
+                || ''""",
+            )
+            if raw and "/s/" in raw and _MASK not in raw and "password=" in raw:
+                return raw
+
+            html_src = await val(ws, "document.documentElement.outerHTML")
+            # Also pull performance/resource entries and page text for password recovery.
+            perf = await val(
+                ws,
+                """JSON.stringify((performance.getEntriesByType('resource')||[]).map(e=>e.name).filter(n=>n.includes('115')||n.includes('password=')).slice(0,50))""",
+            )
+            body_text = await val(ws, "document.body && document.body.innerText || ''")
+            sources = [html_src or "", perf or "", body_text or "", cur_url or "", raw or ""]
+            blob = "\n".join(sources)
+            for candidate in [raw, cur_url]:
+                if candidate and "/s/" in candidate:
+                    recovered = recover_masked_115_share(candidate, blob)
+                    if recovered and _MASK not in recovered:
+                        return recovered
+            # Last resort: any full plaintext share URL in page sources
+            for m in _SHARE_URL_RE.finditer(blob):
+                share_id = m.group(1)
+                if not share_id or _MASK in share_id:
+                    continue
+                val_pwd = None
+                if m.group(2):
+                    pm = _PASSWORD_RE.search(m.group(2) if m.group(2).startswith("password=") else "password=" + m.group(2))
+                    if not pm:
+                        pm = _PASSWORD_RE.search("?" + (m.group(2) or ""))
+                    if pm and pm.group(1) and _MASK not in pm.group(1):
+                        val_pwd = pm.group(1)
+                if not val_pwd:
+                    continue
+                host = "115cdn.com" if "115cdn.com" in m.group(0).lower() else "115.com"
+                return "https://" + host + "/s/" + share_id + "?" + "password=" + val_pwd
+            return None
 
         # 检查页面文字，确认是否需要解锁
         page_text = await val(ws, "document.body.innerText")
@@ -392,36 +442,29 @@ async def unlock_share(resource_url):
             await val(ws, JS_CLICK_CONFIRM)
             await asyncio.sleep(5)
 
-        # 此时页面应该是115分享页，从 URL 中取密码
-        cur_url = await val(ws, "location.href")
-        if "/s/" in cur_url and "password=" in cur_url and "***" not in cur_url:
-            return cur_url
-
-        # 如果 URL 中password被遮蔽，尝试取页面中的链接并恢复明文
-        raw = await val(ws, """document.querySelector('a[href*="115.com/s/"], a[href*="115cdn.com/s/"]')?.href || ''""")
-        if raw and "/s/" in raw and _MASK not in raw:
-            return raw
-
-        # DOM 常遮蔽 password，HTML 源码中可能仍有真实值
-        if raw and "/s/" in raw and _MASK in raw:
-            html_src = await val(ws, "document.documentElement.outerHTML")
-            recovered = recover_masked_115_share(raw, html_src)
-            if recovered:
-                return recovered
-            cur_url2 = await val(ws, "location.href")
-            recovered = recover_masked_115_share(cur_url2 or "", html_src)
-            if recovered:
-                return recovered
+        got = await _extract_share()
+        if got:
+            return got
 
         # 兜底：如果还是 ***，可能是115协议确认页被弹窗遮挡
-        # 再次检查并点击可能的确认按钮
         btns_text = await val(ws, """JSON.stringify(Array.from(document.querySelectorAll('button')).map(b=>b.innerText.trim()))""")
         if btns_text and "确定" in btns_text:
             await val(ws, JS_CLICK_CONFIRM)
             await asyncio.sleep(3)
-            cur_url = await val(ws, "location.href")
-            if "/s/" in cur_url and "password=" in cur_url and "***" not in cur_url:
-                return cur_url
+            got = await _extract_share()
+            if got:
+                return got
+
+        # One more unlock click pass for slow pages
+        page_text = await val(ws, "document.body.innerText")
+        if "确定解锁" in (page_text or ""):
+            await val(ws, JS_CLICK_UNLOCK)
+            await asyncio.sleep(2)
+            await val(ws, JS_CLICK_CONFIRM)
+            await asyncio.sleep(5)
+            got = await _extract_share()
+            if got:
+                return got
 
         return "unlock_failed"
     finally:

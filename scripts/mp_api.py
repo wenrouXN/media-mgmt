@@ -437,10 +437,64 @@ def _title_variants(title: str | None) -> list[str]:
     return out
 
 
+def _media_shell_usable(media: Any) -> bool:
+    if not isinstance(media, dict) or not media:
+        return False
+    if media.get("tmdb_id") or media.get("tmdbid"):
+        return True
+    if media.get("title") or media.get("name") or media.get("en_title") or media.get("original_title"):
+        return True
+    return False
+
+
+def _fetch_tmdb_detail_for_identify(
+    tmdbid: int,
+    *,
+    title: str | None,
+    year: str | None,
+    media_type: str | None,
+) -> dict[str, Any] | None:
+    preferred = normalize_mtype(media_type) if media_type else None
+    if preferred in {"电影", "电视剧"}:
+        order = [preferred, "电视剧" if preferred == "电影" else "电影"]
+    else:
+        order = ["电影", "电视剧"]
+    for mtype in order:
+        try:
+            detail = request(
+                "GET",
+                f"/api/v1/media/tmdb:{tmdbid}",
+                params={"type_name": mtype, "title": title, "year": year},
+            )
+        except SystemExit:
+            continue
+        if _media_shell_usable(detail):
+            if isinstance(detail, dict) and not (detail.get("tmdb_id") or detail.get("tmdbid")):
+                detail = {**detail, "tmdb_id": int(tmdbid)}
+            return detail  # type: ignore[return-value]
+    return None
+
+
 def cmd_identify(args: argparse.Namespace) -> None:
     if args.tmdbid:
-        media_type = normalize_mtype(args.media_type or "tv")
-        detail = request("GET", f"/api/v1/media/tmdb:{args.tmdbid}", params={"type_name": media_type, "title": args.title, "year": args.year})
+        detail = _fetch_tmdb_detail_for_identify(
+            int(args.tmdbid),
+            title=args.title,
+            year=args.year,
+            media_type=args.media_type,
+        )
+        if not detail:
+            raise SystemExit(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "identify_failed",
+                        "tmdbid": args.tmdbid,
+                        "hint": "tmdb detail empty for both movie/tv type_name",
+                    },
+                    ensure_ascii=False,
+                )
+            )
         print_json({"selected": detail, "source": "detail"})
         return
     all_results: list[Any] = []
@@ -549,6 +603,113 @@ def cmd_active(_: argparse.Namespace) -> None:
     print_json(request("GET", "/api/v1/download/") or [])
 
 
+def cmd_cancel(args: argparse.Namespace) -> None:
+    """Cancel/delete active download task(s) via DELETE /api/v1/download/{hash}."""
+    active = request("GET", "/api/v1/download/") or []
+    if not isinstance(active, list):
+        active = []
+
+    def match(item: dict[str, Any]) -> bool:
+        if args.hash:
+            h = str(item.get("hash") or "").lower()
+            return h == str(args.hash).lower() or h.startswith(str(args.hash).lower())
+        title = str(args.title or "").lower()
+        tmdbid = args.tmdbid
+        ep = args.episode
+        blob = " ".join(
+            str(x)
+            for x in (
+                item.get("title"),
+                item.get("name"),
+                item.get("season_episode"),
+                item.get("path"),
+                item.get("tags"),
+            )
+            if x
+        ).lower()
+        media = item.get("media") if isinstance(item.get("media"), dict) else {}
+        ok = True
+        if title:
+            ok = ok and (title in blob or title in str(media.get("title") or "").lower())
+        if tmdbid is not None:
+            mid = media.get("tmdbid") or media.get("tmdb_id") or item.get("tmdbid")
+            try:
+                ok = ok and int(mid) == int(tmdbid)
+            except (TypeError, ValueError):
+                ok = False
+        if ep is not None:
+            se = str(item.get("season_episode") or "") + " " + str(media.get("episode") or "")
+            ok = ok and (f"E{int(ep):02d}" in se.upper() or f"E{int(ep)}" in se.upper() or str(ep) in se)
+        return ok
+
+    matched = [it for it in active if isinstance(it, dict) and match(it)]
+    if not matched:
+        print_json(
+            {
+                "success": False,
+                "error": "no_matching_active_download",
+                "active_count": len(active),
+                "filter": {"hash": args.hash, "title": args.title, "tmdbid": args.tmdbid, "episode": args.episode},
+                "hint": "List first: mp_api.py active / media_ctl run status",
+            }
+        )
+        return
+
+    delete_files = bool(args.delete_files)
+    results = []
+    for it in matched:
+        h = it.get("hash")
+        name = it.get("downloader") or args.downloader or "QB"
+        if not h:
+            results.append({"success": False, "error": "missing_hash", "item": {"title": it.get("title")}})
+            continue
+        if args.dry_run:
+            results.append(
+                {
+                    "success": True,
+                    "dry_run": True,
+                    "would_delete": {"hash": h, "downloader": name, "title": it.get("title"), "delete_files": delete_files},
+                }
+            )
+            continue
+        params: dict[str, Any] = {"name": name}
+        # MoviePilot: DELETE /api/v1/download/{hashString}?name=QB
+        # Some builds accept delete=true for removing files; pass when requested.
+        if delete_files:
+            params["delete"] = "true"
+        try:
+            resp = request("DELETE", f"/api/v1/download/{h}", params=params)
+            results.append(
+                {
+                    "success": True,
+                    "hash": h,
+                    "downloader": name,
+                    "title": it.get("title"),
+                    "progress": it.get("progress"),
+                    "response": resp,
+                }
+            )
+        except SystemExit as e:
+            # request() raises SystemExit with JSON on HTTP errors
+            detail = str(e)
+            try:
+                detail = json.loads(detail)
+            except json.JSONDecodeError:
+                pass
+            results.append({"success": False, "hash": h, "title": it.get("title"), "detail": detail})
+
+    ok_n = sum(1 for r in results if r.get("success"))
+    print_json(
+        {
+            "success": ok_n == len(results) and ok_n > 0,
+            "cancelled": ok_n,
+            "total_matched": len(matched),
+            "delete_files": delete_files,
+            "results": results,
+        }
+    )
+
+
 def cmd_status(args: argparse.Namespace) -> None:
     active = request("GET", "/api/v1/download/") or []
     if not isinstance(active, list):
@@ -619,6 +780,8 @@ def cmd_pick(args: argparse.Namespace) -> None:
         items,
         season=args.season,
         episode=args.episode,
+        media_year=getattr(args, "media_year", None),
+        max_age_days=getattr(args, "max_age_days", None),
         prefer_resolution=args.resolution or "1080p",
         site_priority=site_priority,
         top_n=args.top,
@@ -630,6 +793,10 @@ def cmd_pick(args: argparse.Namespace) -> None:
             "selected": picked.get("selected"),
             "reason": picked.get("reason"),
             "score": picked.get("score"),
+            "needs_confirm": picked.get("needs_confirm"),
+            "confirm_reasons": picked.get("confirm_reasons") or [],
+            "year_match": picked.get("year_match"),
+            "pubdate_age_days": picked.get("pubdate_age_days"),
         }
     )
 
@@ -758,6 +925,16 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("active", help="List active download tasks (GET /api/v1/download/)")
     p.set_defaults(func=cmd_active)
 
+    p = sub.add_parser("cancel", help="Cancel/delete active download(s) by hash/title/tmdb/episode")
+    p.add_argument("--hash", help="Torrent hash (prefix ok)")
+    p.add_argument("--title")
+    p.add_argument("--tmdbid", type=int)
+    p.add_argument("--episode", type=int)
+    p.add_argument("--downloader", help="Downloader name fallback (default QB / task value)")
+    p.add_argument("--delete-files", action="store_true", help="Also delete downloaded files when supported")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_cancel)
+
     p = sub.add_parser("status", help="Status for a title/tmdb/episode across active downloads + transfer history")
     p.add_argument("--title")
     p.add_argument("--tmdbid", type=int)
@@ -769,6 +946,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--results-json", required=True, help="Search result list/object JSON or path")
     p.add_argument("--season", type=int)
     p.add_argument("--episode", type=int)
+    p.add_argument("--media-year", dest="media_year", help="Media production year for year-gate")
+    p.add_argument("--max-age-days", type=float, help="Stale pubdate threshold in days")
     p.add_argument("--resolution", default="1080p")
     p.add_argument("--site-priority", help="comma-separated preferred site names")
     p.add_argument("--top", type=int, default=3)

@@ -26,6 +26,26 @@ def op_active(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict
     return run_mp_api(["active"])
 
 
+def op_cancel(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    args = ["cancel"]
+    for key, flag in (
+        ("hash", "--hash"),
+        ("title", "--title"),
+        ("tmdbid", "--tmdbid"),
+        ("episode", "--episode"),
+        ("downloader", "--downloader"),
+    ):
+        if params.get(key) not in (None, ""):
+            args += [flag, str(params[key])]
+    if str(params.get("delete_files") or "").lower() in {"1", "true", "yes"}:
+        args.append("--delete-files")
+    if str(params.get("dry_run") or "").lower() in {"1", "true", "yes"}:
+        args.append("--dry-run")
+    if len(args) == 1:
+        return {"success": False, "error": "missing_param", "need": "hash|title|tmdbid"}
+    return run_mp_api(args)
+
+
 def op_identify(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     title = params.get("title") or params.get("q")
     if not title and not params.get("tmdbid"):
@@ -176,18 +196,36 @@ def op_transfer_share(svc: Service, cfg: dict[str, Any], params: dict[str, Any])
     from media_mgmt_lib.providers.hdhive.grab import transfer_share_to_moviepilot
 
     share_url = params.get("share_url") or params.get("url")
+    password = params.get("password") or params.get("receive_code")
     if not share_url:
         return {"success": False, "error": "missing_param", "need": "share_url"}
+    text = str(share_url)
+    if password and "password=" not in text:
+        sep = "&" if "?" in text else "?"
+        text = f"{text}{sep}password={password}"
+    if "***" in text or ("password=" in text.lower() and "*" in text.split("password=", 1)[-1][:8]):
+        return {
+            "success": False,
+            "error": "masked_or_invalid_share_password",
+            "share_url": text,
+            "hint": "Refuse transfer when password is masked as ***; re-unlock HDHive resource for plaintext password",
+        }
     try:
-        result = transfer_share_to_moviepilot(str(share_url))
-        ok = result.get("code") == 0 or "已经转存" in str(result.get("msg") or "")
-        return {"success": ok, "result": result}
+        result = transfer_share_to_moviepilot(text)
+        msg = str(result.get("msg") or "")
+        ok = result.get("code") == 0 or "已经转存" in msg or "已存在" in msg
+        return {
+            "success": ok,
+            "result": result,
+            "error": None if ok else (result.get("msg") or "transfer_failed"),
+        }
     except Exception as e:  # noqa: BLE001
         return {"success": False, "error": "transfer_failed", "detail": str(e)}
 
 
 register_op("moviepilot", "clients", op_clients)
 register_op("moviepilot", "active", op_active)
+register_op("moviepilot", "cancel", op_cancel)
 register_op("moviepilot", "identify", op_identify)
 register_op("moviepilot", "status", op_status)
 register_op("moviepilot", "search", op_search)

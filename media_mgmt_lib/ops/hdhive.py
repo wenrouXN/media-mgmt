@@ -53,14 +53,59 @@ def op_resources(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> d
         return {"success": False, "error": "hdhive_resources_failed", "detail": str(e)}
 
 
+def _share_url_ok(share_url: Any) -> bool:
+    text = str(share_url or "").strip()
+    if not text or "unlock_failed" in text:
+        return False
+    if "/s/" not in text:
+        return False
+    # DOM-masked password is never usable for P115StrmHelper transfer.
+    if "***" in text:
+        return False
+    # require password query with non-empty plaintext
+    if "password=" not in text.lower():
+        return False
+    try:
+        from urllib.parse import parse_qs, urlparse
+
+        qs = parse_qs(urlparse(text).query)
+        pwd = (qs.get("password") or [""])[0]
+        if not pwd or "*" in pwd:
+            return False
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+def _transfer_ok(transfer: Any) -> bool:
+    if not isinstance(transfer, dict):
+        return False
+    if transfer.get("error"):
+        return False
+    # P115StrmHelper returns {code:0,msg:...} on success; code:-1 on failure.
+    if "code" in transfer:
+        if transfer.get("code") == 0:
+            return True
+        msg = str(transfer.get("msg") or "")
+        return "已经转存" in msg or "已存在" in msg
+    if transfer.get("success") is True:
+        return True
+    return False
+
+
 def op_unlock(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     url = params.get("url") or params.get("resource_url")
     if not url:
         return {"success": False, "error": "missing_param", "need": "url"}
     try:
         share_url = asyncio.run(hdhive.unlock_share(str(url)))
-        ok = bool(share_url) and "unlock_failed" not in str(share_url) and "***" not in str(share_url)
-        return {"success": ok, "share_url": share_url}
+        ok = _share_url_ok(share_url)
+        return {
+            "success": ok,
+            "share_url": share_url if ok else None,
+            "raw_share_url": share_url,
+            "error": None if ok else "masked_or_invalid_share_password",
+        }
     except Exception as e:  # noqa: BLE001
         return {"success": False, "error": "hdhive_unlock_failed", "detail": str(e)}
 
@@ -112,25 +157,37 @@ def op_grab(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[s
             hdr_mode=qpref.get("hdr_mode") or "any",
         )
         share_url = asyncio.run(hdhive.unlock_share(best["url"]))
-        ok_unlock = bool(share_url) and "unlock_failed" not in str(share_url) and "***" not in str(share_url)
+        ok_unlock = _share_url_ok(share_url)
         transfer = None
         if ok_unlock and do_transfer:
             try:
                 transfer = transfer_share_to_moviepilot(str(share_url))
             except Exception as e:  # noqa: BLE001
                 transfer = {"error": str(e)}
-        transfer_ok = isinstance(transfer, dict) and not transfer.get("error") and (
-            transfer.get("success") is not False
-        )
+        elif do_transfer and not ok_unlock:
+            transfer = {
+                "error": "masked_or_invalid_share_password",
+                "raw_share_url": share_url,
+                "hint": "HDHive unlock returned masked password=***; refuse transfer and fall back to PT",
+            }
+        transfer_ok = _transfer_ok(transfer) if do_transfer else True
+        success = ok_unlock and (transfer_ok if do_transfer else True)
+        error = None
+        if not ok_unlock:
+            error = "masked_or_invalid_share_password"
+        elif do_transfer and not transfer_ok:
+            error = "transfer_failed"
         return {
-            "success": ok_unlock and (transfer_ok if do_transfer else True),
+            "success": success,
             "selected": chosen,
             "best_resource": best,
-            "share_url": share_url,
+            "share_url": share_url if ok_unlock else None,
+            "raw_share_url": share_url,
             "transfer": transfer,
             "quality": qpref,
             "source": "hdhive_115",
             "resources_count": len(resources),
+            "error": error,
         }
     except Exception as e:  # noqa: BLE001
         return {"success": False, "error": "hdhive_grab_failed", "detail": str(e), "quality": qpref}

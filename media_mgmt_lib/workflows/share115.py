@@ -11,6 +11,14 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     if password and "password=" not in str(share_url):
         sep = "&" if "?" in str(share_url) else "?"
         share_url = f"{share_url}{sep}password={password}"
+    # Guard: never hand password=*** to the plugin (always becomes 访问码错误).
+    text = str(share_url)
+    if "***" in text or ("password=" in text.lower() and "*" in text.split("password=", 1)[-1][:8]):
+        return fail(
+            "masked_or_invalid_share_password",
+            share_url=text.split("password=")[0] + ("password=***" if "password=" in text else ""),
+            hint="Need plaintext 115 password; re-run HDHive unlock or provide password explicitly",
+        )
     result = mp("transfer_share", share_url=share_url)
     code = None
     msg = None

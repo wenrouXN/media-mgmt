@@ -93,21 +93,69 @@ def _episode_keywords(season: int | None, episode: int | None) -> list[str]:
     return keys
 
 
+def _media_shell_usable(media: Any) -> bool:
+    """MoviePilot may return a non-empty JSON shell with all-null fields when type_name is wrong."""
+    if not isinstance(media, dict) or not media:
+        return False
+    if media.get("tmdb_id") or media.get("tmdbid"):
+        return True
+    if media.get("title") or media.get("name") or media.get("en_title") or media.get("original_title"):
+        return True
+    return False
+
+
+def _fetch_tmdb_detail(
+    tmdbid: int,
+    *,
+    title: str | None,
+    year: str | None,
+    media_type: str | None,
+) -> dict[str, Any] | None:
+    """Fetch media detail by tmdb id, trying movie/tv when type is unknown or wrong."""
+    preferred = mp_api.normalize_mtype(media_type) if media_type else None
+    # Prefer explicit type; otherwise try both. Movies were previously defaulted to TV and returned empty shells.
+    if preferred in {"电影", "电视剧"}:
+        order = [preferred, "电视剧" if preferred == "电影" else "电影"]
+    else:
+        # Heuristic: Chinese titles without Sxx/Exx often movies; still try both.
+        order = ["电影", "电视剧"]
+    last: dict[str, Any] | None = None
+    for mtype in order:
+        try:
+            detail = mp_api.request(
+                "GET",
+                f"/api/v1/media/tmdb:{tmdbid}",
+                params={"type_name": mtype, "title": title, "year": year},
+            )
+        except SystemExit:
+            continue
+        if _media_shell_usable(detail):
+            if isinstance(detail, dict) and not detail.get("tmdb_id") and not detail.get("tmdbid"):
+                detail = {**detail, "tmdb_id": int(tmdbid)}
+            return detail  # type: ignore[return-value]
+        if isinstance(detail, dict):
+            last = detail
+    return last if _media_shell_usable(last) else None
+
+
 def identify_media(title: str, media_type: str | None, year: str | None, tmdbid: int | None) -> dict[str, Any]:
     _stage("identify_start", title=title, tmdbid=tmdbid)
     if tmdbid:
-        mtype = mp_api.normalize_mtype(media_type or "tv") or "电视剧"
-        detail = mp_api.request(
-            "GET",
-            f"/api/v1/media/tmdb:{tmdbid}",
-            params={"type_name": mtype, "title": title, "year": year},
-        )
-        if isinstance(detail, dict) and detail:
-            _stage("identify_done", via="tmdb_detail", tmdb_id=detail.get("tmdb_id") or tmdbid)
-            return detail
+        detail = _fetch_tmdb_detail(int(tmdbid), title=title, year=year, media_type=media_type)
+        if _media_shell_usable(detail):
+            _stage(
+                "identify_done",
+                via="tmdb_detail",
+                tmdb_id=(detail or {}).get("tmdb_id") or (detail or {}).get("tmdbid") or tmdbid,
+                media_type=(detail or {}).get("type"),
+            )
+            return detail  # type: ignore[return-value]
         # fallback recognize
-        rec = mp_api.request("GET", "/api/v1/media/recognize", params={"title": title})
-        if isinstance(rec, dict) and isinstance(rec.get("media_info"), dict):
+        try:
+            rec = mp_api.request("GET", "/api/v1/media/recognize", params={"title": title})
+        except SystemExit:
+            rec = None
+        if isinstance(rec, dict) and isinstance(rec.get("media_info"), dict) and _media_shell_usable(rec.get("media_info")):
             _stage("identify_done", via="recognize_fallback", tmdb_id=(rec["media_info"] or {}).get("tmdb_id"))
             return rec["media_info"]
         raise SystemExit(json.dumps({"success": False, "error": "identify_failed", "tmdbid": tmdbid, "stages": list(_STAGES)}, ensure_ascii=False))
@@ -255,46 +303,55 @@ def try_hdhive(
     episode: int | None,
     *,
     timeout: float = 90,
+    transfer: bool = True,
 ) -> dict[str, Any] | None:
+    """Run HDHive grab (search → unlock → optional 115 transfer) for this media.
+
+    Prefer the ops facade so unlock/transfer validation stays in one place.
+    """
     tmdb_id = media.get("tmdb_id") or media.get("tmdbid")
-    if not tmdb_id:
+    title = media.get("title") or media.get("en_title") or media.get("original_title") or ""
+    if not tmdb_id and not title:
         return None
     mtype_raw = str(media.get("type") or "")
     kind = "movie" if mtype_raw in {"电影", "movie"} else "tv"
-    script = repo_root / "scripts" / "hdhive.py"
-    if not script.exists():
-        return {"success": False, "error": "hdhive_script_missing"}
-    _stage("hdhive_start", tmdb_id=tmdb_id, kind=kind, timeout=timeout)
+    _stage("hdhive_start", tmdb_id=tmdb_id, kind=kind, timeout=timeout, transfer=transfer)
     try:
-        proc = subprocess.run(
-            [sys.executable, str(script), "tmdb", kind, str(tmdb_id)],
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        _stage("hdhive_timeout", timeout=timeout)
-        return {"success": False, "error": "hdhive_timeout", "timeout": timeout}
+        # Import inside function to keep watch.py usable even if hdhive deps missing.
+        import media_mgmt_lib.ops.bootstrap  # noqa: F401
+        from media_mgmt_lib.ops import call_op
+
+        params: dict[str, Any] = {
+            "tmdbid": tmdb_id,
+            "title": title,
+            "q": title,
+            "media_type": kind,
+            "transfer": transfer,
+        }
+        # Bound total wall time roughly via subprocess-less call; CDP unlock may still take long.
+        result = call_op("hdhive", "grab", params)
     except Exception as e:  # noqa: BLE001
         _stage("hdhive_failed", detail=str(e))
-        return {"success": False, "error": "hdhive_exec_failed", "detail": str(e)}
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
-    payload: Any
-    try:
-        payload = json.loads(out) if out else {"stdout": out, "stderr": err, "code": proc.returncode}
-    except json.JSONDecodeError:
-        payload = {"stdout": out, "stderr": err, "code": proc.returncode}
-    _stage("hdhive_done", code=proc.returncode, success=proc.returncode == 0)
+        return {"success": False, "error": "hdhive_exec_failed", "detail": str(e), "season": season, "episode": episode}
+
+    ok = bool(isinstance(result, dict) and result.get("success"))
+    share_url = (result or {}).get("share_url") if isinstance(result, dict) else None
+    transfer_info = (result or {}).get("transfer") if isinstance(result, dict) else None
+    _stage(
+        "hdhive_done",
+        success=ok,
+        has_share=bool(share_url),
+        transfer_ok=bool(isinstance(transfer_info, dict) and (transfer_info.get("code") == 0 or transfer_info.get("success") is True)),
+    )
     return {
-        "success": proc.returncode == 0,
-        "code": proc.returncode,
-        "result": payload,
-        "note": "HDHive path returns candidates/unlock URLs; watch.py currently reports and continues to PT unless --hdhive-only.",
+        "success": ok,
+        "result": result,
+        "share_url": share_url,
+        "transfer": transfer_info,
+        "source": "hdhive_115",
         "season": season,
         "episode": episode,
+        "note": "HDHive grab unlocks 115 share and transfers via P115StrmHelper when possible; on failure watch continues to PT." if not ok else "HDHive grab succeeded",
     }
 
 
@@ -453,9 +510,29 @@ def cmd_watch(args: argparse.Namespace) -> int:
             print_json(report)
             return 0 if hdhive_result and hdhive_result.get("success") else 1
 
-    if args.prefer == "hdhive" and hdhive_result and hdhive_result.get("success") and not args.force_pt:
-        # For now HDHive success still needs unlock/transfer workflow; fall through unless only.
-        report["note"] = "HDHive candidates found; continuing PT unless --hdhive-only."
+        # Full HDHive success (unlock + transfer) can short-circuit PT path.
+        if (
+            hdhive_result
+            and hdhive_result.get("success")
+            and not args.force_pt
+            and not args.dry_run
+        ):
+            report["success"] = True
+            report["source"] = "hdhive_115"
+            report["note"] = "HDHive unlock+transfer succeeded; skipped PT."
+            try:
+                report["status"] = status_snapshot(media, args.episode)
+            except Exception:  # noqa: BLE001
+                report["status"] = None
+            print_json(report)
+            return 0
+
+        if hdhive_result and not hdhive_result.get("success"):
+            report["note"] = (
+                "HDHive failed ("
+                + str((hdhive_result.get("result") or {}).get("error") or hdhive_result.get("error") or "unknown")
+                + "); continuing PT."
+            )
 
     _stage("clients_check")
     clients = ensure_clients()
@@ -475,10 +552,15 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
     _stage("pick_start", search_count=len(items))
     site_priority = [s.strip() for s in (args.site_priority or "").split(",") if s.strip()] or None
+    media_year = media.get("year") or args.year
+    max_age_days = getattr(args, "max_age_days", None)
     picked = pick_torrent(
         items,
         season=args.season,
         episode=args.episode,
+        media_year=media_year,
+        prefer_fresh=not bool(getattr(args, "ignore_freshness", False)),
+        max_age_days=max_age_days,
         prefer_resolution=args.resolution or "1080p",
         site_priority=site_priority,
         require_chinese=bool(getattr(args, "require_chinese", False)),
@@ -486,12 +568,20 @@ def cmd_watch(args: argparse.Namespace) -> int:
         top_n=args.top,
     )
     report["candidates"] = [summarize_candidate(x) for x in picked.get("candidates") or []]
+    report["pick_meta"] = {
+        "media_year": media_year,
+        "needs_confirm": bool(picked.get("needs_confirm")),
+        "confirm_reasons": picked.get("confirm_reasons") or [],
+        "year_match": picked.get("year_match"),
+        "pubdate_age_days": picked.get("pubdate_age_days"),
+        "max_age_days": max_age_days,
+    }
     selected = picked.get("selected")
     _stage("pick_done", selected=bool(selected), candidates=len(report["candidates"]))
     if not selected:
         report["success"] = False
         report["error"] = "pick_failed"
-        report["hint"] = "Search returned items but none matched season/episode filter. Resource may not be out yet."
+        report["hint"] = "Search returned items but none matched season/episode/year filter. Resource may not be out yet."
         print_json(report)
         return 5
 
@@ -506,6 +596,18 @@ def cmd_watch(args: argparse.Namespace) -> int:
         selected = cands[idx]
 
     report["selected"] = summarize_candidate(selected)
+    force_confirm_risk = bool(picked.get("needs_confirm")) and not bool(getattr(args, "force", False))
+    # When agent passes --yes/--auto but pick is risky (year/pubdate/low seeders), block unless --force.
+    if force_confirm_risk and (args.yes or args.auto) and not args.dry_run:
+        report["success"] = False
+        report["error"] = "safety_confirmation_required"
+        report["hint"] = (
+            "Selected torrent looks risky (year/pubdate/seeders). "
+            "Show candidates to user, then re-run with --force --yes, or --pick-index N --force --yes. "
+            "If already downloaded wrong one: media_ctl run cancel."
+        )
+        print_json(report)
+        return 6
     if not args.yes and not args.dry_run and not args.auto:
         report["success"] = False
         report["error"] = "confirmation_required"
@@ -602,6 +704,22 @@ def build_watch_parser() -> argparse.ArgumentParser:
     parser.add_argument("--site-priority", help="comma-separated preferred site names")
     parser.add_argument("--top", type=int, default=3)
     parser.add_argument("--pick-index", type=int, help="Choose candidate index from ranked list")
+    parser.add_argument(
+        "--max-age-days",
+        type=float,
+        default=None,
+        help="Prefer/require torrent pubdate within N days; older candidates score stale and need --force",
+    )
+    parser.add_argument(
+        "--ignore-freshness",
+        action="store_true",
+        help="Do not rank by torrent pubdate freshness",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass safety gate for year/pubdate/low-seeders (still requires --yes)",
+    )
     parser.add_argument("--downloader", help="QB/TR/...")
     parser.add_argument("--save-path")
     parser.add_argument("--yes", action="store_true", help="Download without interactive confirmation")

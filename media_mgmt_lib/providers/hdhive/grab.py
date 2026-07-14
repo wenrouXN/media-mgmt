@@ -17,15 +17,48 @@ from media_mgmt_lib.providers.hdhive.provider import CLOAK_URL, cdp, ensure_prof
 CONFIG = load_json_config()
 
 
+def _is_usable_115_share(share_url: str) -> bool:
+    text = (share_url or "").strip()
+    if not text or "/s/" not in text or "***" in text:
+        return False
+    parsed = urllib.parse.urlparse(text)
+    qs = urllib.parse.parse_qs(parsed.query)
+    pwd = (qs.get("password") or [""])[0]
+    return bool(pwd) and "*" not in pwd
+
+
 def transfer_share_to_moviepilot(share_url: str) -> dict:
+    """Transfer a plaintext 115 share URL via P115StrmHelper.
+
+    Refuses masked passwords (password=***) which always become 访问码错误.
+    """
     creds = moviepilot_credentials(CONFIG)
     if not creds.get("BASE_URL") or not creds.get("API_KEY"):
         raise RuntimeError("Missing moviepilot.base_url or moviepilot.api_key in config")
-    query = urllib.parse.urlencode({"apikey": creds["API_KEY"], "share_url": share_url})
-    req = urllib.request.Request(
-        f"{creds['BASE_URL']}/api/v1/plugin/P115StrmHelper/add_transfer_share?{query}"
+    if not _is_usable_115_share(share_url):
+        return {
+            "code": -1,
+            "msg": "masked_or_invalid_share_password",
+            "data": None,
+            "share_url": share_url,
+            "hint": "Need plaintext ?password=xxx; password=*** cannot be transferred",
+        }
+    # Normalize 115cdn.com -> 115.com for plugin parsers that only match one host.
+    normalized = share_url.replace("https://115cdn.com/", "https://115.com/").replace(
+        "http://115cdn.com/", "http://115.com/"
     )
-    return json.loads(urllib.request.urlopen(req).read())
+    query = urllib.parse.urlencode({"apikey": creds["API_KEY"], "share_url": normalized})
+    req = urllib.request.Request(
+        f"{creds['BASE_URL'].rstrip('/')}/api/v1/plugin/P115StrmHelper/add_transfer_share?{query}"
+    )
+    try:
+        payload = json.loads(urllib.request.urlopen(req, timeout=60).read())
+    except Exception as e:  # noqa: BLE001
+        return {"code": -1, "msg": str(e), "data": None, "error": str(e)}
+    if not isinstance(payload, dict):
+        return {"code": -1, "msg": "invalid_plugin_response", "data": payload}
+    # Keep original response shape; callers must check code==0.
+    return payload
 
 
 def pick_best_resource(

@@ -9,3 +9,4 @@ config.json
 *.session
 *.session-journal
 downloads/
+docs/superpowers/

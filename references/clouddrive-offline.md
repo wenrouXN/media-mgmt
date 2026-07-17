@@ -12,20 +12,25 @@
 
 ## 配置
 
-`config.json` → `clouddrive`（见 `config.example.json`）：
+**Token** → workspace `.credentials/clouddrive.env`（见 `credentials.md`）  
+**非密默认** → skill `config.json` → `clouddrive`：
 
 | 字段 | 说明 |
 |------|------|
 | `url` 或 `host`+`port` | CloudDrive gRPC，本机常见 `http://127.0.0.1:19798` |
-| `token` | API Token（Bearer）；优先于 username/password |
 | `default_folder` | 默认离线目录 |
-| `save_paths` | 可选路径列表（兼容 newbyte `Downloader.clouddrive`） |
+| `save_paths` | 可选路径列表 |
 | `timeout` / `insecure` | 默认 30s / true |
 
-本机从 newbyte 读到的常用值：
+`.credentials/clouddrive.env` 示例：
 
-- 端点：`http://192.168.1.68:19798`（本机也可 `127.0.0.1:19798`，host 网络）
-- 默认目录：`/115open/download/av`（download_log 高频）
+```bash
+CLOUDDRIVE_URL=http://127.0.0.1:19798
+CLOUDDRIVE_TOKEN=your-api-token
+CLOUDDRIVE_DEFAULT_FOLDER=/115open/download/av
+```
+
+本机常用默认目录：`/115open/download/av`。
 
 ## 主入口
 

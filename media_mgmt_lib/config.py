@@ -6,19 +6,34 @@ import json
 from pathlib import Path
 from typing import Any
 
+from media_mgmt_lib.credentials import inject_secrets
+
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = SKILL_ROOT / "config.json"
 EMPTY_VALUES = (None, "")
 
 
-def load_json_config(path: str | Path | None = None) -> dict[str, Any]:
-    """Load skill config JSON. Missing optional configs return empty dict."""
+def load_json_config(
+    path: str | Path | None = None,
+    *,
+    inject: bool = True,
+) -> dict[str, Any]:
+    """Load skill config JSON and inject secrets from workspace .credentials/.
+
+    Secrets (api_key/token/session…) prefer env + `.credentials/*` over config.json.
+    Missing optional configs return empty dict.
+    """
     config_path = Path(path) if path else DEFAULT_CONFIG_PATH
     if not config_path.exists():
-        return {}
-    with open(config_path, "r", encoding="utf-8") as handle:
-        return json.load(handle)
+        data: dict[str, Any] = {}
+    else:
+        with open(config_path, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+        data = raw if isinstance(raw, dict) else {}
+    if inject:
+        return inject_secrets(data)
+    return data
 
 
 def merge_config_sources(cli_values: dict[str, Any], json_defaults: dict[str, Any]) -> dict[str, Any]:
@@ -45,7 +60,7 @@ def get_nested(config: dict[str, Any], path: str, default: Any = None) -> Any:
 
 
 def moviepilot_credentials(config: dict[str, Any]) -> dict[str, str]:
-    """Return MoviePilot REST credentials from config."""
+    """Return MoviePilot REST credentials from config (already secret-injected)."""
     moviepilot = section(config, "moviepilot")
     base_url = moviepilot.get("base_url")
     api_key = moviepilot.get("api_key")

@@ -67,7 +67,7 @@ python3 scripts/media_ctl.py run doctor
 
 ## 3. 硬规则（违反=错用）
 
-1. 不读 config.json；脚本自加载。
+1. 不读 config.json；脚本自加载。密钥在 workspace `.credentials/*.env`，见 `references/credentials.md`。
 2. 空下载列表 ≠ 无下载器 → `call moviepilot clients`。
 3. 禁止残缺 download body / 发明 mp_api 参数（无 `search tmdb:ID` 位置参、无 mp_api `--episode`）。
 4. 防误下：年+pubdate+seeders；`safety_confirmation_required` 须用户确认后 force。
@@ -101,6 +101,7 @@ python3 scripts/media_ctl.py run doctor
 | 精确 CLI / REST / 环境坑 | `references/commands.md` |
 | 网盘成功判据 / P115 | `references/hdhive-115.md` |
 | **CloudDrive 磁力离线** | `references/clouddrive-offline.md` |
+| **共享密钥 .credentials** | `references/credentials.md` |
 | 短链意图表 / 红果 / **盘点内容抽取** | `references/link-intents.md` |
 
 默认：**本文件决策表 + 一枪 run**。细节不够再开 ref。

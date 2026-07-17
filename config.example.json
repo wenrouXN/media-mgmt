@@ -1,10 +1,10 @@
 {
+  "_comment": "Secrets live in workspace .credentials/*.env (see references/credentials.md). Do not put api_key/token/session here.",
   "pansou": {
     "url": "http://127.0.0.1:805"
   },
   "moviepilot": {
     "base_url": "http://127.0.0.1:3002",
-    "api_key": "***",
     "mcporter_server": "moviepilot"
   },
   "hdhive": {
@@ -13,10 +13,6 @@
     "profile_id": ""
   },
   "telegram_music": {
-    "api_id": 123456,
-    "api_hash": "replace-with-your-telegram-api-hash",
-    "session_string": "replace-with-your-telegram-session-string",
-    "session_name": "",
     "bot": "@music_v1bot",
     "download_dir": "./downloads/music",
     "button_index": 1,
@@ -47,7 +43,6 @@
   },
   "clouddrive": {
     "url": "http://127.0.0.1:19798",
-    "token": "replace-with-clouddrive-api-token",
     "default_folder": "/115open/download/av",
     "timeout": 30,
     "insecure": true,

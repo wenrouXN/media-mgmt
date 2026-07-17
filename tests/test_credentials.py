@@ -28,10 +28,8 @@ def test_inject_secrets_prefers_file_over_config(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("BASE_URL", raising=False)
     file_key = "FILE_KEY_VALUE"
     config_key = "CONFIG_KEY_VALUE"
-    (tmp_path / "moviepilot.env").write_text(
-        f"MOVIEPILOT_API_KEY={file_key}\nMOVIEPILOT_BASE_URL=http://from-file\n",
-        encoding="utf-8",
-    )
+    content = "MOVIEPILOT_API_KEY=" + file_key + "\nMOVIEPILOT_BASE_URL=http://from-file\n"
+    (tmp_path / "moviepilot.env").write_text(content, encoding="utf-8")
     cfg = {
         "moviepilot": {
             "base_url": "http://from-config",
@@ -40,18 +38,15 @@ def test_inject_secrets_prefers_file_over_config(tmp_path: Path, monkeypatch):
     }
     out = inject_secrets(cfg, cred_dir=tmp_path)
     assert out["moviepilot"]["api_key"] == file_key
-    # optional only fills when empty
     assert out["moviepilot"]["base_url"] == "http://from-config"
-    # must not mutate global SECRET_MAP
     assert "base_url" not in SECRET_MAP["moviepilot"]
 
 
 def test_inject_secrets_env_wins(tmp_path: Path, monkeypatch):
     file_token = "FILE_TOKEN_VALUE"
     env_token = "ENV_TOKEN_VALUE"
-    (tmp_path / "clouddrive.env").write_text(
-        f"CLOUDDRIVE_TOKEN={file_token}\n", encoding="utf-8"
-    )
+    content = "CLOUDDRIVE_TOKEN=" + file_token + "\n"
+    (tmp_path / "clouddrive.env").write_text(content, encoding="utf-8")
     monkeypatch.setenv("CLOUDDRIVE_TOKEN", env_token)
     out = inject_secrets({"clouddrive": {}}, cred_dir=tmp_path)
     assert out["clouddrive"]["token"] == env_token
@@ -77,7 +72,6 @@ def test_resolve_credentials_dir_exists():
 
 
 def test_live_load_injects_when_files_present():
-    """If this host has migrated env files, secrets appear after load."""
     d = resolve_credentials_dir()
     has_mp = (d / "moviepilot.env").exists()
     has_cd = (d / "clouddrive.env").exists()

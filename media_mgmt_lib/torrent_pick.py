@@ -264,6 +264,7 @@ def score_torrent(
     blob = _text_blob(item, ti)
     title = str(ti.get("title") or "")
     seeders = int(ti.get("seeders") or 0)
+    seeder_alive = 1 if seeders > 0 else 0
     dvf = ti.get("downloadvolumefactor")
     try:
         dvf_f = float(dvf) if dvf is not None else 1.0
@@ -291,14 +292,18 @@ def score_torrent(
                 site_score = max(site_score, len(site_priority) - i)
     has_enclosure = 1 if ti.get("enclosure") else 0
     hard = 1 if q.get("matches_hard") else 0
+    res_rank = int(q.get("resolution_rank") or 0)
     ymatch = year_match_score(item, media_year)
     # normalize: -1 (no constraint) behaves as neutral 1 for ranking base
     y_rank = 1 if ymatch < 0 else ymatch
     fresh = freshness_score(item, now=now, max_age_days=max_age_days) if prefer_fresh else 0
     # higher tuple wins
+    # Policy: preferred quality match first; else best resolution among seeded torrents.
     return (
         y_rank,  # wrong year must lose hard
-        hard,
+        hard,  # preferred quality hit (e.g. 4K SDR)
+        seeder_alive,  # must prefer seeded over zero-seed
+        res_rank,  # absolute quality ladder when preferred missing
         exact_ep,
         has_enclosure,
         fresh,
@@ -336,6 +341,8 @@ def filter_and_rank(
             pool = year_exact
         elif year_ok:
             pool = year_ok
+    # Prefer preferred quality when available; otherwise keep full pool and rank by
+    # absolute resolution + seeders (see score_torrent). Never hard-fail to empty.
     if hard_filter and (prefer_resolution or require_chinese or (hdr_mode or "any") != "any"):
         quality_pool = []
         for it in pool:
@@ -348,8 +355,31 @@ def filter_and_rank(
                 hdr_mode=hdr_mode,
             ):
                 quality_pool.append(it)
-        if quality_pool:
+        # Prefer seeded preferred-quality first when possible
+        seeded_quality = []
+        for it in quality_pool:
+            ti = _as_torrent_info(it)
+            try:
+                if int(ti.get("seeders") or 0) > 0:
+                    seeded_quality.append(it)
+            except (TypeError, ValueError):
+                pass
+        if seeded_quality:
+            pool = seeded_quality
+        elif quality_pool:
             pool = quality_pool
+        else:
+            # Fallback: only seeded candidates if any; else full pool
+            seeded = []
+            for it in pool:
+                ti = _as_torrent_info(it)
+                try:
+                    if int(ti.get("seeders") or 0) > 0:
+                        seeded.append(it)
+                except (TypeError, ValueError):
+                    pass
+            if seeded:
+                pool = seeded
     ranked = sorted(
         pool,
         key=lambda it: score_torrent(

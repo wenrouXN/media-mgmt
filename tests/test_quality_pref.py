@@ -72,3 +72,43 @@ def test_parse_quality_params():
     q = quality_score("x 2160p 中字 SDR", resolution="2160p", require_chinese=True, hdr_mode="sdr")
     assert q["matches_hard"] is True
     assert q["score"] >= 50
+
+
+def test_fallback_best_seeded_resolution():
+    """No 4K SDR match: pick highest resolution among seeded torrents."""
+    items = [
+        _item("Show S01E05 720p 中字", seeders=99),
+        _item("Show S01E05 1080p 中字", seeders=5),
+        _item("Show S01E05 2160p HDR 中字", seeders=0),  # better res but dead
+        _item("Show S01E05 480p", seeders=50),
+    ]
+    picked = pick_torrent(
+        items,
+        season=1,
+        episode=5,
+        prefer_resolution="2160p",
+        require_chinese=False,
+        hdr_mode="sdr",
+        top_n=4,
+    )
+    assert picked["selected"] is not None
+    title = picked["selected"]["torrent_info"]["title"]
+    # preferred 4K SDR missing; among seeded, 1080p wins over 720/480; zero-seed 4K loses
+    assert "1080p" in title
+
+
+def test_prefer_seeded_4k_sdr_over_more_seeders_1080():
+    items = [
+        _item("Show S01E05 1080p 中字", seeders=200),
+        _item("Show S01E05 2160p SDR 中字", seeders=3),
+    ]
+    picked = pick_torrent(
+        items,
+        season=1,
+        episode=5,
+        prefer_resolution="2160p",
+        require_chinese=True,
+        hdr_mode="sdr",
+    )
+    title = picked["selected"]["torrent_info"]["title"]
+    assert "2160p" in title and "SDR" in title

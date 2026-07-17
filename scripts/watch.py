@@ -684,6 +684,12 @@ def cmd_watch(args: argparse.Namespace) -> int:
     site_priority = [s.strip() for s in (args.site_priority or "").split(",") if s.strip()] or None
     media_year = media.get("year") or args.year
     max_age_days = getattr(args, "max_age_days", None)
+    mtype_raw = str(media.get("type") or args.media_type or "")
+    is_tv = mtype_raw in {"电视剧", "tv", "TV", "show", "series"} or args.episode is not None
+    # TV default: prefer 4K SDR; if missing, fallback ranks highest seeded quality.
+    # Movie default stays 1080p / any HDR unless user overrides.
+    prefer_resolution = args.resolution or ("2160p" if is_tv else "1080p")
+    hdr_mode = getattr(args, "hdr_mode", None) or ("sdr" if is_tv else "any")
     picked = pick_torrent(
         items,
         season=args.season,
@@ -691,12 +697,18 @@ def cmd_watch(args: argparse.Namespace) -> int:
         media_year=media_year,
         prefer_fresh=not bool(getattr(args, "ignore_freshness", False)),
         max_age_days=max_age_days,
-        prefer_resolution=args.resolution or "1080p",
+        prefer_resolution=prefer_resolution,
         site_priority=site_priority,
         require_chinese=bool(getattr(args, "require_chinese", False)),
-        hdr_mode=str(getattr(args, "hdr_mode", "any") or "any"),
+        hdr_mode=str(hdr_mode or "any"),
         top_n=args.top,
     )
+    report["quality_policy"] = {
+        "is_tv": bool(is_tv),
+        "prefer_resolution": prefer_resolution,
+        "hdr_mode": str(hdr_mode or "any"),
+        "fallback": "best_seeded_resolution" if is_tv else "soft_rank",
+    }
     report["candidates"] = [summarize_candidate(x) for x in picked.get("candidates") or []]
     report["pick_meta"] = {
         "media_year": media_year,
@@ -828,9 +840,18 @@ def build_watch_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hdhive-only", action="store_true")
     parser.add_argument("--force-pt", action="store_true")
     parser.add_argument("--sites", help="comma-separated site ids")
-    parser.add_argument("--resolution", default="1080p")
+    parser.add_argument(
+        "--resolution",
+        default=None,
+        help="Preferred resolution (e.g. 2160p/1080p). Default: 2160p for TV, 1080p for movie",
+    )
     parser.add_argument("--require-chinese", action="store_true", help="Prefer/require Chinese audio/subs signals in title")
-    parser.add_argument("--hdr-mode", choices=["any","sdr","hdr"], default="any")
+    parser.add_argument(
+        "--hdr-mode",
+        choices=["any", "sdr", "hdr"],
+        default=None,
+        help="HDR preference. Default: sdr for TV, any for movie",
+    )
     parser.add_argument("--site-priority", help="comma-separated preferred site names")
     parser.add_argument("--top", type=int, default=3)
     parser.add_argument("--pick-index", type=int, help="Choose candidate index from ranked list")

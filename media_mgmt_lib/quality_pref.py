@@ -81,6 +81,25 @@ def detected_resolution(text: str) -> str | None:
     return None
 
 
+# Absolute resolution ladder for soft fallback ranking (higher = better).
+_RES_RANK = {
+    "2160p": 4,
+    "4k": 4,
+    "uhd": 4,
+    "1080p": 3,
+    "720p": 2,
+    "480p": 1,
+}
+
+
+def resolution_rank(text: str | None) -> int:
+    """Rank detected resolution for 'best available quality' fallback."""
+    det = detected_resolution(text or "")
+    if not det:
+        return 0
+    return int(_RES_RANK.get(det, 0))
+
+
 def matches_quality(
     text: str,
     *,
@@ -149,12 +168,20 @@ def quality_score(
             score -= 15
             reasons.append("hdr_missing")
 
+    det = detected_resolution(t)
+    # Absolute ladder so fallback (no preferred match) still prefers 4K > 1080 > 720
+    abs_rank = resolution_rank(t)
+    score += abs_rank * 8
+    if abs_rank:
+        reasons.append(f"res_rank={det or abs_rank}")
+
     return {
         "score": score,
         "resolution_hit": res_ok,
         "chinese": cn,
         "hdr": hdr,
-        "detected_resolution": detected_resolution(t),
+        "detected_resolution": det,
+        "resolution_rank": abs_rank,
         "matches_hard": matches_quality(t, resolution=resolution, require_chinese=require_chinese, hdr_mode=hdr_mode),
         "reasons": reasons,
     }

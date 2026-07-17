@@ -27,10 +27,10 @@
 ```bash
 CLOUDDRIVE_URL=http://127.0.0.1:19798
 CLOUDDRIVE_TOKEN=your-api-token
-CLOUDDRIVE_DEFAULT_FOLDER=/115open/download/av
+CLOUDDRIVE_DEFAULT_FOLDER=/115open/download
 ```
 
-本机常用默认目录：`/115open/download/av`。
+本机常用默认目录：`/115open/download`。
 
 ## 主入口
 
@@ -44,16 +44,16 @@ python3 scripts/media_ctl.py run offline --param magnet='magnet:?xt=urn:btih:...
 # 指定目录
 python3 scripts/media_ctl.py run offline \
   --param magnet='magnet:?xt=urn:btih:...' \
-  --param save_path='/115open/download/av' \
+  --param save_path='/115open/download' \
   --param title=片名
 
 # 底层 op
 python3 scripts/media_ctl.py call clouddrive add_offline \
   --param urls='magnet:?xt=...' \
-  --param to_folder='/115open/download/av'
+  --param to_folder='/115open/download'
 
 python3 scripts/media_ctl.py call clouddrive list_offline \
-  --param path='/115open/download/av'
+  --param path='/115open/download'
 ```
 
 ## 成功判据

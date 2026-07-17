@@ -27,7 +27,7 @@ class CloudDriveConfig:
     token: str = ""
     username: str = ""
     password: str = ""
-    default_folder: str = "/115open/download/av"
+    default_folder: str = "/115open/download"
     timeout: float = 30.0
     insecure: bool = True
 
@@ -62,7 +62,7 @@ class CloudDriveConfig:
                 elif isinstance(first, str):
                     default_folder = first.strip()
         if not default_folder:
-            default_folder = "/115open/download/av"
+            default_folder = "/115open/download"
         return cls(
             host=host,
             port=int(port),

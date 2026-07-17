@@ -43,11 +43,18 @@
   },
   "clouddrive": {
     "url": "http://127.0.0.1:19798",
-    "default_folder": "/115open/download/av",
+    "default_folder": "/115open/download",
     "timeout": 30,
     "insecure": true,
     "save_paths": [
-      { "path": "/115open/download/av", "label": "AV" }
+      {
+        "path": "/115open/download",
+        "label": "download中转"
+      },
+      {
+        "path": "/115open/download/av",
+        "label": "AV"
+      }
     ]
   }
 }

@@ -58,7 +58,7 @@ python3 scripts/media_ctl.py call <service> <op> --param k=v
 python3 scripts/media_ctl.py run updates --param title=片名 --param tmdbid=ID
 python3 scripts/media_ctl.py run watch --param title=片名 --param tmdbid=ID --param episode=5 --param media_type=tv --param dry_run=true
 python3 scripts/media_ctl.py run hdhive --param tmdbid=ID --param title=片名 --param media_type=movie --param transfer=true
-python3 scripts/media_ctl.py run offline --param magnet='magnet:?xt=urn:btih:...' --param save_path='/115open/download/av'
+python3 scripts/media_ctl.py run offline --param magnet='magnet:?xt=urn:btih:...' --param save_path='/115open/download'
 python3 scripts/media_ctl.py run link --param url='https://...' --param intent=下载
 python3 scripts/media_ctl.py run doctor
 ```

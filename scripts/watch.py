@@ -686,10 +686,26 @@ def cmd_watch(args: argparse.Namespace) -> int:
     max_age_days = getattr(args, "max_age_days", None)
     mtype_raw = str(media.get("type") or args.media_type or "")
     is_tv = mtype_raw in {"电视剧", "tv", "TV", "show", "series"} or args.episode is not None
-    # TV default: prefer 4K SDR; if missing, fallback ranks highest seeded quality.
-    # Movie default stays 1080p / any HDR unless user overrides.
-    prefer_resolution = args.resolution or ("2160p" if is_tv else "1080p")
+    # TV: prefer 4K SDR; if missing, fallback ranks highest seeded quality.
+    # Movie: exclude 原盘/REMUX; prefer high-quality fx subtitles, then best Chinese quality.
+    prefer_resolution = args.resolution or ("2160p" if is_tv else None)
     hdr_mode = getattr(args, "hdr_mode", None) or ("sdr" if is_tv else "any")
+    require_chinese = bool(getattr(args, "require_chinese", False))
+    prefer_fx_sub = False
+    exclude_disc = False
+    if not is_tv:
+        # Movie defaults
+        require_chinese = True
+        prefer_fx_sub = True
+        exclude_disc = True
+        if bool(getattr(args, "no_require_chinese", False)):
+            require_chinese = False
+        if bool(getattr(args, "require_chinese", False)):
+            require_chinese = True
+        if bool(getattr(args, "allow_disc", False)):
+            exclude_disc = False
+        if bool(getattr(args, "no_fx_sub", False)):
+            prefer_fx_sub = False
     picked = pick_torrent(
         items,
         season=args.season,
@@ -697,17 +713,26 @@ def cmd_watch(args: argparse.Namespace) -> int:
         media_year=media_year,
         prefer_fresh=not bool(getattr(args, "ignore_freshness", False)),
         max_age_days=max_age_days,
-        prefer_resolution=prefer_resolution,
+        prefer_resolution=prefer_resolution or "",
         site_priority=site_priority,
-        require_chinese=bool(getattr(args, "require_chinese", False)),
+        require_chinese=require_chinese,
         hdr_mode=str(hdr_mode or "any"),
+        prefer_fx_sub=prefer_fx_sub,
+        exclude_disc=exclude_disc,
         top_n=args.top,
     )
     report["quality_policy"] = {
         "is_tv": bool(is_tv),
-        "prefer_resolution": prefer_resolution,
+        "prefer_resolution": prefer_resolution or ("best" if not is_tv else "2160p"),
         "hdr_mode": str(hdr_mode or "any"),
-        "fallback": "best_seeded_resolution" if is_tv else "soft_rank",
+        "require_chinese": bool(require_chinese),
+        "prefer_fx_sub": bool(prefer_fx_sub),
+        "exclude_disc": bool(exclude_disc),
+        "fallback": (
+            "best_seeded_resolution"
+            if is_tv
+            else "fx_sub_then_best_chinese_quality"
+        ),
     }
     report["candidates"] = [summarize_candidate(x) for x in picked.get("candidates") or []]
     report["pick_meta"] = {
@@ -846,6 +871,21 @@ def build_watch_parser() -> argparse.ArgumentParser:
         help="Preferred resolution (e.g. 2160p/1080p). Default: 2160p for TV, 1080p for movie",
     )
     parser.add_argument("--require-chinese", action="store_true", help="Prefer/require Chinese audio/subs signals in title")
+    parser.add_argument(
+        "--no-require-chinese",
+        action="store_true",
+        help="Disable Chinese preference (overrides movie default)",
+    )
+    parser.add_argument(
+        "--allow-disc",
+        action="store_true",
+        help="Allow 原盘/REMUX candidates (movie default excludes them)",
+    )
+    parser.add_argument(
+        "--no-fx-sub",
+        action="store_true",
+        help="Disable special-effect subtitle preference for movies",
+    )
     parser.add_argument(
         "--hdr-mode",
         choices=["any", "sdr", "hdr"],

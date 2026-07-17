@@ -6,7 +6,14 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from media_mgmt_lib.quality_pref import quality_score, matches_quality, blob_of
+from media_mgmt_lib.quality_pref import (
+    quality_score,
+    matches_quality,
+    blob_of,
+    has_chinese,
+    has_fx_subtitle,
+    is_original_disc,
+)
 
 
 _EP_PATTERNS = [
@@ -259,10 +266,13 @@ def score_torrent(
     site_priority: list[str] | None = None,
     require_chinese: bool = False,
     hdr_mode: str = "any",
+    prefer_fx_sub: bool = False,
+    exclude_disc: bool = False,
 ) -> tuple[int, ...]:
     ti = _as_torrent_info(item)
     blob = _text_blob(item, ti)
     title = str(ti.get("title") or "")
+    full = blob_of(title, blob)
     seeders = int(ti.get("seeders") or 0)
     seeder_alive = 1 if seeders > 0 else 0
     dvf = ti.get("downloadvolumefactor")
@@ -273,10 +283,12 @@ def score_torrent(
     free = 1 if dvf_f == 0 else 0
     half = 1 if abs(dvf_f - 0.5) < 1e-9 else 0
     q = quality_score(
-        blob_of(title, blob),
+        full,
         resolution=prefer_resolution,
         require_chinese=require_chinese,
         hdr_mode=hdr_mode,
+        prefer_fx_sub=prefer_fx_sub,
+        exclude_disc=exclude_disc,
     )
     exact_ep = 0
     if episode is not None:
@@ -293,15 +305,22 @@ def score_torrent(
     has_enclosure = 1 if ti.get("enclosure") else 0
     hard = 1 if q.get("matches_hard") else 0
     res_rank = int(q.get("resolution_rank") or 0)
+    fx_hit = 1 if q.get("fx_sub") else 0
+    cn_hit = 1 if q.get("chinese") else 0
+    non_disc = 0 if (exclude_disc and q.get("is_disc")) else 1
     ymatch = year_match_score(item, media_year)
     # normalize: -1 (no constraint) behaves as neutral 1 for ranking base
     y_rank = 1 if ymatch < 0 else ymatch
     fresh = freshness_score(item, now=now, max_age_days=max_age_days) if prefer_fresh else 0
     # higher tuple wins
-    # Policy: preferred quality match first; else best resolution among seeded torrents.
+    # TV: preferred quality (4K SDR) > seeded > res ladder
+    # Movie: non-disc > fx-sub > chinese > res ladder among seeded
     return (
         y_rank,  # wrong year must lose hard
-        hard,  # preferred quality hit (e.g. 4K SDR)
+        non_disc,  # exclude 原盘/REMUX when requested
+        hard,  # preferred quality hit (e.g. 4K SDR / fx-sub hard match)
+        fx_hit if prefer_fx_sub else 0,
+        cn_hit if require_chinese else 0,
         seeder_alive,  # must prefer seeded over zero-seed
         res_rank,  # absolute quality ladder when preferred missing
         exact_ep,
@@ -313,6 +332,19 @@ def score_torrent(
         half,
         site_score,
     )
+
+
+def _seeders_of(item: dict[str, Any]) -> int:
+    ti = _as_torrent_info(item)
+    try:
+        return int(ti.get("seeders") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _blob_for(item: dict[str, Any]) -> str:
+    ti = _as_torrent_info(item)
+    return blob_of(ti.get("title"), _text_blob(item, ti))
 
 
 def filter_and_rank(
@@ -328,6 +360,8 @@ def filter_and_rank(
     site_priority: list[str] | None = None,
     require_chinese: bool = False,
     hdr_mode: str = "any",
+    prefer_fx_sub: bool = False,
+    exclude_disc: bool = False,
     hard_filter: bool = True,
     limit: int = 10,
 ) -> list[dict[str, Any]]:
@@ -341,45 +375,77 @@ def filter_and_rank(
             pool = year_exact
         elif year_ok:
             pool = year_ok
+
+    # Movie default: drop 原盘/REMUX when any non-disc alternative exists.
+    if exclude_disc:
+        non_disc = [it for it in pool if not is_original_disc(_blob_for(it))]
+        if non_disc:
+            pool = non_disc
+
     # Prefer preferred quality when available; otherwise keep full pool and rank by
     # absolute resolution + seeders (see score_torrent). Never hard-fail to empty.
-    if hard_filter and (prefer_resolution or require_chinese or (hdr_mode or "any") != "any"):
+    want_quality = hard_filter and (
+        prefer_resolution
+        or require_chinese
+        or prefer_fx_sub
+        or (hdr_mode or "any") != "any"
+    )
+    if want_quality:
         quality_pool = []
         for it in pool:
-            ti = _as_torrent_info(it)
-            blob = _text_blob(it, ti)
-            if matches_quality(
-                blob_of(ti.get("title"), blob),
+            blob = _blob_for(it)
+            ok = matches_quality(
+                blob,
                 resolution=prefer_resolution,
                 require_chinese=require_chinese,
                 hdr_mode=hdr_mode,
-            ):
+            )
+            if prefer_fx_sub and not has_fx_subtitle(blob):
+                ok = False
+            if exclude_disc and is_original_disc(blob):
+                ok = False
+            if ok:
                 quality_pool.append(it)
-        # Prefer seeded preferred-quality first when possible
-        seeded_quality = []
-        for it in quality_pool:
-            ti = _as_torrent_info(it)
-            try:
-                if int(ti.get("seeders") or 0) > 0:
-                    seeded_quality.append(it)
-            except (TypeError, ValueError):
-                pass
-        if seeded_quality:
-            pool = seeded_quality
-        elif quality_pool:
-            pool = quality_pool
+
+        # Movie tiered prefer: fx-sub+chinese → chinese → any non-disc seeded
+        if prefer_fx_sub or require_chinese:
+            fx_cn = [
+                it
+                for it in pool
+                if _seeders_of(it) > 0
+                and has_fx_subtitle(_blob_for(it))
+                and has_chinese(_blob_for(it))
+                and not (exclude_disc and is_original_disc(_blob_for(it)))
+            ]
+            cn_only = [
+                it
+                for it in pool
+                if _seeders_of(it) > 0
+                and has_chinese(_blob_for(it))
+                and not (exclude_disc and is_original_disc(_blob_for(it)))
+            ]
+            if prefer_fx_sub and fx_cn:
+                pool = fx_cn
+            elif require_chinese and cn_only:
+                pool = cn_only
+            elif quality_pool:
+                seeded_quality = [it for it in quality_pool if _seeders_of(it) > 0]
+                pool = seeded_quality or quality_pool
+            else:
+                seeded = [it for it in pool if _seeders_of(it) > 0]
+                if seeded:
+                    pool = seeded
         else:
-            # Fallback: only seeded candidates if any; else full pool
-            seeded = []
-            for it in pool:
-                ti = _as_torrent_info(it)
-                try:
-                    if int(ti.get("seeders") or 0) > 0:
-                        seeded.append(it)
-                except (TypeError, ValueError):
-                    pass
-            if seeded:
-                pool = seeded
+            seeded_quality = [it for it in quality_pool if _seeders_of(it) > 0]
+            if seeded_quality:
+                pool = seeded_quality
+            elif quality_pool:
+                pool = quality_pool
+            else:
+                seeded = [it for it in pool if _seeders_of(it) > 0]
+                if seeded:
+                    pool = seeded
+
     ranked = sorted(
         pool,
         key=lambda it: score_torrent(
@@ -394,6 +460,8 @@ def filter_and_rank(
             site_priority=site_priority,
             require_chinese=require_chinese,
             hdr_mode=hdr_mode,
+            prefer_fx_sub=prefer_fx_sub,
+            exclude_disc=exclude_disc,
         ),
         reverse=True,
     )
@@ -413,6 +481,8 @@ def pick_torrent(
     site_priority: list[str] | None = None,
     require_chinese: bool = False,
     hdr_mode: str = "any",
+    prefer_fx_sub: bool = False,
+    exclude_disc: bool = False,
     hard_filter: bool = True,
     top_n: int = 3,
 ) -> dict[str, Any]:
@@ -428,6 +498,8 @@ def pick_torrent(
         site_priority=site_priority,
         require_chinese=require_chinese,
         hdr_mode=hdr_mode,
+        prefer_fx_sub=prefer_fx_sub,
+        exclude_disc=exclude_disc,
         hard_filter=hard_filter,
         limit=max(top_n, 1),
     )
@@ -454,13 +526,15 @@ def pick_torrent(
             site_priority=site_priority,
             require_chinese=require_chinese,
             hdr_mode=hdr_mode,
+            prefer_fx_sub=prefer_fx_sub,
+            exclude_disc=exclude_disc,
         )
         for it in ranked[:2]
     ]
     needs_confirm = False
     confirm_reasons: list[str] = []
-    # compare first 5 ranking dimensions (year/hard/ep/enclosure/fresh)
-    if len(scores) >= 2 and scores[0][:5] == scores[1][:5]:
+    # compare first ranking dimensions for close race
+    if len(scores) >= 2 and scores[0][:7] == scores[1][:7]:
         needs_confirm = True
         confirm_reasons.append("close_top_scores")
     ti = _as_torrent_info(selected)
@@ -469,6 +543,8 @@ def pick_torrent(
         resolution=prefer_resolution,
         require_chinese=require_chinese,
         hdr_mode=hdr_mode,
+        prefer_fx_sub=prefer_fx_sub,
+        exclude_disc=exclude_disc,
     )
     if not q.get("matches_hard"):
         needs_confirm = True

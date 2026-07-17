@@ -43,6 +43,12 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         "中文",
     }:
         cmd.append("--require-chinese")
+    if str(params.get("no_require_chinese") or "").lower() in {"1", "true", "yes"}:
+        cmd.append("--no-require-chinese")
+    if str(params.get("allow_disc") or "").lower() in {"1", "true", "yes"}:
+        cmd.append("--allow-disc")
+    if str(params.get("no_fx_sub") or "").lower() in {"1", "true", "yes"}:
+        cmd.append("--no-fx-sub")
     if str(params.get("yes", "true")).lower() in {"1", "true", "yes"} and not params.get("dry_run"):
         cmd.append("--yes")
     if params.get("dry_run") in (True, "true", "1", "yes"):

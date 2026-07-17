@@ -29,6 +29,43 @@ _CN_POS = [
 ]
 _CN_RE = re.compile("|".join(_CN_POS), re.I)
 
+# High-quality / special-effect subtitle signals (movie prefer)
+_FX_SUB_POS = [
+    "特效字幕",
+    "特效",
+    "花字",
+    "双语特效",
+    "中字特效",
+    "特效中字",
+    r"FX.?SUB",
+    r"Special.?Effect.?Sub",
+    r"\bASS\b",
+    r"\bSSA\b",
+    r"\bPGS\b",
+    r"\bSUP\b",
+    "内封特效",
+]
+_FX_SUB_RE = re.compile("|".join(_FX_SUB_POS), re.I)
+
+# Original disc / remux — exclude for movie default unless user allows
+_DISC_POS = [
+    r"\bREMUX\b",
+    r"\bBDREMUX\b",
+    r"\bUHD.?REMUX\b",
+    "原盘",
+    "蓝光原盘",
+    r"\bCOMPLETE.?BLURAY\b",
+    r"\bBLURAY.?COMPLETE\b",
+    r"\bBD25\b",
+    r"\bBD50\b",
+    r"\bBD66\b",
+    r"\bBD100\b",
+    r"\bISO\b",
+    r"\bm2ts\b",
+    r"\bBDMV\b",
+]
+_DISC_RE = re.compile("|".join(_DISC_POS), re.I)
+
 _HDR_POS = re.compile(r"\b(hdr10\+?|hdr|dolby.?vision|dovi|dv|hlg)\b", re.I)
 _SDR_HINT = re.compile(r"\bsdr\b", re.I)
 
@@ -47,6 +84,16 @@ def blob_of(*parts: Any) -> str:
 
 def has_chinese(text: str) -> bool:
     return bool(_CN_RE.search(text or ""))
+
+
+def has_fx_subtitle(text: str) -> bool:
+    """Special-effect / high-quality styled subtitles."""
+    return bool(_FX_SUB_RE.search(text or ""))
+
+
+def is_original_disc(text: str) -> bool:
+    """True for remux / 原盘 / BDMV-style disc rips."""
+    return bool(_DISC_RE.search(text or ""))
 
 
 def has_hdr(text: str) -> bool:
@@ -129,17 +176,24 @@ def quality_score(
     resolution: str | None = "1080p",
     require_chinese: bool = False,
     hdr_mode: str = "any",
+    prefer_fx_sub: bool = False,
+    exclude_disc: bool = False,
 ) -> dict[str, Any]:
     """Soft score components (higher better). Does not hard-filter."""
     t = text or ""
     res_ok = resolution_hit(t, resolution) if resolution else True
     cn = has_chinese(t)
+    fx = has_fx_subtitle(t)
+    disc = is_original_disc(t)
     hdr = has_hdr(t)
     sdr_lbl = has_sdr_label(t)
     mode = (hdr_mode or "any").lower()
 
     score = 0
     reasons: list[str] = []
+    if exclude_disc and disc:
+        score -= 200
+        reasons.append("disc_excluded")
     if res_ok:
         score += 50
         reasons.append("resolution_hit")
@@ -152,6 +206,13 @@ def quality_score(
     elif require_chinese:
         score -= 40
         reasons.append("chinese_missing")
+
+    if prefer_fx_sub:
+        if fx:
+            score += 55
+            reasons.append("fx_sub")
+        else:
+            reasons.append("fx_sub_missing")
 
     if mode == "sdr":
         if hdr and not sdr_lbl:
@@ -175,14 +236,24 @@ def quality_score(
     if abs_rank:
         reasons.append(f"res_rank={det or abs_rank}")
 
+    matches_hard = matches_quality(
+        t, resolution=resolution, require_chinese=require_chinese, hdr_mode=hdr_mode
+    )
+    if prefer_fx_sub and not fx:
+        matches_hard = False
+    if exclude_disc and disc:
+        matches_hard = False
+
     return {
         "score": score,
         "resolution_hit": res_ok,
         "chinese": cn,
+        "fx_sub": fx,
+        "is_disc": disc,
         "hdr": hdr,
         "detected_resolution": det,
         "resolution_rank": abs_rank,
-        "matches_hard": matches_quality(t, resolution=resolution, require_chinese=require_chinese, hdr_mode=hdr_mode),
+        "matches_hard": matches_hard,
         "reasons": reasons,
     }
 

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from media_mgmt_lib.quality_pref import (
     has_chinese,
+    has_fx_subtitle,
     has_hdr,
+    is_original_disc,
     matches_quality,
     parse_quality_params,
     quality_score,
@@ -112,3 +114,51 @@ def test_prefer_seeded_4k_sdr_over_more_seeders_1080():
     )
     title = picked["selected"]["torrent_info"]["title"]
     assert "2160p" in title and "SDR" in title
+
+
+def test_disc_and_fx_detection():
+    assert is_original_disc("Movie 2024 UHD BluRay REMUX")
+    assert is_original_disc("电影 蓝光原盘 BD50")
+    assert not is_original_disc("Movie 2024 2160p WEB-DL 中字")
+    assert has_fx_subtitle("Movie 2024 1080p 特效字幕")
+    assert has_fx_subtitle("Movie 2024 1080p ASS 内封")
+    assert not has_fx_subtitle("Movie 2024 1080p 中字")
+
+
+def test_movie_prefers_fx_sub_over_plain_chinese_higher_res():
+    items = [
+        _item("Movie 2024 2160p 中字", seeders=50),
+        _item("Movie 2024 1080p 特效字幕 中字", seeders=8),
+        _item("Movie 2024 UHD BluRay REMUX 中字", seeders=99),
+    ]
+    picked = pick_torrent(
+        items,
+        prefer_resolution="",
+        require_chinese=True,
+        prefer_fx_sub=True,
+        exclude_disc=True,
+        top_n=3,
+    )
+    title = picked["selected"]["torrent_info"]["title"]
+    assert "特效字幕" in title
+    assert "REMUX" not in title
+
+
+def test_movie_fallback_best_chinese_when_no_fx():
+    items = [
+        _item("Movie 2024 720p 中字", seeders=40),
+        _item("Movie 2024 2160p 中字", seeders=5),
+        _item("Movie 2024 1080p English", seeders=80),
+        _item("Movie 2024 BD50 原盘 中字", seeders=90),
+    ]
+    picked = pick_torrent(
+        items,
+        prefer_resolution="",
+        require_chinese=True,
+        prefer_fx_sub=True,
+        exclude_disc=True,
+        top_n=4,
+    )
+    title = picked["selected"]["torrent_info"]["title"]
+    assert "2160p" in title and "中字" in title
+    assert "原盘" not in title and "English" not in title

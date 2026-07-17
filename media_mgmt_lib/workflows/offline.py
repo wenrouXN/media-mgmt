@@ -4,7 +4,9 @@ from __future__ import annotations
 from typing import Any
 
 import media_mgmt_lib.ops.bootstrap  # noqa: F401
+from media_mgmt_lib.config import load_json_config, section
 from media_mgmt_lib.ops import call_op
+from media_mgmt_lib.providers.clouddrive.client import resolve_save_path
 from media_mgmt_lib.workflows._util import fail, ok
 
 
@@ -20,18 +22,18 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     if not magnet:
         return fail("missing_param", need="magnet|urls|url")
 
-    save_path = (
+    save_path_raw = (
         params.get("save_path")
         or params.get("to_folder")
         or params.get("path")
         or params.get("folder")
         or ""
     )
+    conf = section(load_json_config(), "clouddrive")
+    save_path = resolve_save_path(str(save_path_raw) if save_path_raw else None, conf)
     title = params.get("title") or params.get("name") or ""
 
-    op_params: dict[str, Any] = {"magnet": magnet}
-    if save_path:
-        op_params["save_path"] = str(save_path)
+    op_params: dict[str, Any] = {"magnet": magnet, "save_path": save_path}
     if params.get("check_folder_after_secs") not in (None, ""):
         op_params["check_folder_after_secs"] = params.get("check_folder_after_secs")
 

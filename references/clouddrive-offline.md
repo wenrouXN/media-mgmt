@@ -27,10 +27,29 @@
 ```bash
 CLOUDDRIVE_URL=http://127.0.0.1:19798
 CLOUDDRIVE_TOKEN=your-api-token
-CLOUDDRIVE_DEFAULT_FOLDER=/115open/download
+CLOUDDRIVE_DEFAULT_FOLDER=/115open/download/中转
 ```
 
-本机常用默认目录：`/115open/download`。
+## 目录地图（115open）
+
+默认离线：**`/115open/download/中转`**
+
+`/115open/download/` 子目录（可指定）：
+
+| 别名 | 完整路径 | 用途 |
+|------|----------|------|
+| 中转 / download / 默认 | `/115open/download/中转` | 默认中转落点 |
+| av / AV | `/115open/download/av` | AV 离线 |
+| else / 其他 | `/115open/download/else` | 其它离线 |
+
+相关（非 download，但可指定）：
+
+| 别名 | 完整路径 |
+|------|----------|
+| 国产原创 | `/115open/media/av/collections/国产原创` |
+| 三级写真 | `/115open/media/av/collections/三级写真` |
+
+顶层结构（了解即可）：`backup` / `download` / `media` / `share` / `最近接收`
 
 ## 主入口
 
@@ -44,16 +63,16 @@ python3 scripts/media_ctl.py run offline --param magnet='magnet:?xt=urn:btih:...
 # 指定目录
 python3 scripts/media_ctl.py run offline \
   --param magnet='magnet:?xt=urn:btih:...' \
-  --param save_path='/115open/download' \
+  --param save_path='/115open/download/中转' \
   --param title=片名
 
 # 底层 op
 python3 scripts/media_ctl.py call clouddrive add_offline \
   --param urls='magnet:?xt=...' \
-  --param to_folder='/115open/download'
+  --param to_folder='/115open/download/中转'
 
 python3 scripts/media_ctl.py call clouddrive list_offline \
-  --param path='/115open/download'
+  --param path='/115open/download/中转'
 ```
 
 ## 成功判据

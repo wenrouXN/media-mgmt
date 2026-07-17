@@ -43,17 +43,49 @@
   },
   "clouddrive": {
     "url": "http://127.0.0.1:19798",
-    "default_folder": "/115open/download",
+    "default_folder": "/115open/download/中转/中转",
     "timeout": 30,
     "insecure": true,
     "save_paths": [
       {
-        "path": "/115open/download",
-        "label": "download中转"
+        "path": "/115open/download/中转/中转",
+        "label": "中转",
+        "aliases": [
+          "中转",
+          "download",
+          "默认",
+          "staging"
+        ]
       },
       {
         "path": "/115open/download/av",
-        "label": "AV"
+        "label": "AV",
+        "aliases": [
+          "av",
+          "AV"
+        ]
+      },
+      {
+        "path": "/115open/download/中转/else",
+        "label": "else",
+        "aliases": [
+          "else",
+          "其他"
+        ]
+      },
+      {
+        "path": "/115open/media/av/collections/国产原创",
+        "label": "国产原创",
+        "aliases": [
+          "国产原创"
+        ]
+      },
+      {
+        "path": "/115open/media/av/collections/三级写真",
+        "label": "三级写真",
+        "aliases": [
+          "三级写真"
+        ]
       }
     ]
   }

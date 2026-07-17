@@ -40,7 +40,7 @@ MOVIEPILOT_API_KEY=your-key
 # workspace/.credentials/clouddrive.env
 CLOUDDRIVE_URL=http://127.0.0.1:19798
 CLOUDDRIVE_TOKEN=your-api-token
-CLOUDDRIVE_DEFAULT_FOLDER=/115open/download
+CLOUDDRIVE_DEFAULT_FOLDER=/115open/download/中转
 
 # workspace/.credentials/telegram_music.env
 TELEGRAM_API_ID=123456

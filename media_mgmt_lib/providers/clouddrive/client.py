@@ -27,7 +27,7 @@ class CloudDriveConfig:
     token: str = ""
     username: str = ""
     password: str = ""
-    default_folder: str = "/115open/download"
+    default_folder: str = "/115open/download/中转"
     timeout: float = 30.0
     insecure: bool = True
 
@@ -62,7 +62,7 @@ class CloudDriveConfig:
                 elif isinstance(first, str):
                     default_folder = first.strip()
         if not default_folder:
-            default_folder = "/115open/download"
+            default_folder = "/115open/download/中转"
         return cls(
             host=host,
             port=int(port),
@@ -323,3 +323,77 @@ def _redact_magnet(url: str) -> str:
 
 def client_from_config(cfg: dict[str, Any] | None) -> CloudDriveClient:
     return CloudDriveClient(CloudDriveConfig.from_dict(cfg))
+
+
+def resolve_save_path(raw: str | None, conf: dict[str, Any] | None) -> str:
+    """Map alias/label/short name to full CloudDrive path.
+
+    Accepts full paths, save_paths[].path, label, or aliases.
+    Empty input -> conf.default_folder / first save_path / hard fallback.
+    """
+    conf = conf or {}
+    text = str(raw or "").strip()
+    default = str(
+        conf.get("default_folder")
+        or conf.get("default_path")
+        or conf.get("save_path")
+        or ""
+    ).strip()
+    save_paths = conf.get("save_paths") or []
+    if not default and isinstance(save_paths, list) and save_paths:
+        first = save_paths[0]
+        if isinstance(first, dict):
+            default = str(first.get("path") or "").strip()
+        elif isinstance(first, str):
+            default = first.strip()
+    if not default:
+        default = "/115open/download/中转"
+    if not text:
+        return default
+
+    # exact full path
+    if text.startswith("/"):
+        return text
+
+    key = text.lower()
+    alias_map: dict[str, str] = {}
+    for item in save_paths if isinstance(save_paths, list) else []:
+        if isinstance(item, str):
+            alias_map[item.lower()] = item
+            alias_map[item.rstrip("/").split("/")[-1].lower()] = item
+            continue
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        alias_map[path.lower()] = path
+        label = str(item.get("label") or "").strip()
+        if label:
+            alias_map[label.lower()] = path
+        for al in item.get("aliases") or []:
+            if al:
+                alias_map[str(al).lower()] = path
+        # basename of path also works: av / 中转 / else
+        base = path.rstrip("/").split("/")[-1]
+        if base:
+            alias_map[base.lower()] = path
+
+    # common Chinese / English shorthands even without config
+    alias_map.setdefault("中转", "/115open/download/中转")
+    alias_map.setdefault("download", "/115open/download/中转")
+    alias_map.setdefault("staging", "/115open/download/中转")
+    alias_map.setdefault("默认", "/115open/download/中转")
+    alias_map.setdefault("av", "/115open/download/av")
+    alias_map.setdefault("else", "/115open/download/else")
+    alias_map.setdefault("其他", "/115open/download/else")
+
+    if key in alias_map:
+        return alias_map[key]
+    # allow "download/av" style relative
+    rel = text.lstrip("/")
+    if rel.startswith("115open/"):
+        return "/" + rel
+    if rel.startswith("download/"):
+        return "/115open/" + rel
+    return text  # last resort: pass through (may fail on CloudDrive)

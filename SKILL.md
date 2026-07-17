@@ -22,6 +22,7 @@ description: "跨服务媒体编排（认片/搜下/缺集诊断/115·HDHive 转
 | 重复留哪个 | `run duplicates` | title 或 tmdbid | 不自动删 |
 | 转存网盘 / HDHive / 115 找源 | `run hdhive` | tmdbid+media_type 或 title；`transfer=true` | 失败再 `watch --prefer pt` |
 | 已有 115 分享+明文密码 | `run share115` | share_url（禁 `password=***`） | — |
+| **磁力离线 / CloudDrive 离线** | **`run offline`** | magnet 或 url；可选 save_path | 默认目录见 config `clouddrive.default_folder` |
 | 下错了 / 取消下载 | `run cancel` | title/tmdbid/hash；可 episode | 先 `dry_run=true`；删文件 `delete_files=true` |
 | 订阅 / 追更 | `run subscribe` / `run catchup` | title 或 tmdbid | catchup 执行要 `execute=true` |
 | 质量升级 4K/中字 | `run upgrade` | title 或 tmdbid | 先 `dry_run=true` |
@@ -57,6 +58,7 @@ python3 scripts/media_ctl.py call <service> <op> --param k=v
 python3 scripts/media_ctl.py run updates --param title=片名 --param tmdbid=ID
 python3 scripts/media_ctl.py run watch --param title=片名 --param tmdbid=ID --param episode=5 --param media_type=tv --param dry_run=true
 python3 scripts/media_ctl.py run hdhive --param tmdbid=ID --param title=片名 --param media_type=movie --param transfer=true
+python3 scripts/media_ctl.py run offline --param magnet='magnet:?xt=urn:btih:...' --param save_path='/115open/download/av'
 python3 scripts/media_ctl.py run link --param url='https://...' --param intent=下载
 python3 scripts/media_ctl.py run doctor
 ```
@@ -75,6 +77,7 @@ python3 scripts/media_ctl.py run doctor
 8. 完成看 `history/transfer`，不只 active downloads。
 9. 破坏性操作二次确认。
 10. **盘点/片单**：先 parse 穷尽元数据；不够再下载+ASR。禁止先整段下载。
+11. **磁力离线**：`run offline` 成功 = CloudDrive `AddOfflineFiles` 成功，不是 qB active。路径须支持离线。
 
 ## 4. 失败怎么补一枪（别重开全套）
 
@@ -88,6 +91,7 @@ python3 scripts/media_ctl.py run doctor
 | 短链只解析不够 | `run link` + 明确 intent=下载/评论/… |
 | 盘点只有 hashtag / 届次 chapter | 先声明 API 天花板 → 下载+ASR（可 OCR/评论交叉）→ identify；见 link-intents |
 | 盘点误先整段下载 | 补跑 parse 归档字段；下次禁止倒序 |
+| 磁力离线失败 | 查 `clouddrive health`；路径是否支持离线；见 clouddrive-offline |
 
 ## 5. 按需加载
 
@@ -96,6 +100,7 @@ python3 scripts/media_ctl.py run doctor
 | 19 个剧本目录与场景策略 | `references/workflows.md` |
 | 精确 CLI / REST / 环境坑 | `references/commands.md` |
 | 网盘成功判据 / P115 | `references/hdhive-115.md` |
+| **CloudDrive 磁力离线** | `references/clouddrive-offline.md` |
 | 短链意图表 / 红果 / **盘点内容抽取** | `references/link-intents.md` |
 
 默认：**本文件决策表 + 一枪 run**。细节不够再开 ref。

@@ -22,6 +22,7 @@ from media_mgmt_lib.workflows import hdhive as w_hdhive
 from media_mgmt_lib.workflows import retry as w_retry
 from media_mgmt_lib.workflows import upgrade as w_upgrade
 from media_mgmt_lib.workflows import cancel as w_cancel
+from media_mgmt_lib.workflows import offline as w_offline
 
 WorkflowFn = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -138,6 +139,12 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "fn": w_cancel.run,
         "summary": "下错撤回：取消活动下载（hash/title/tmdb/episode）",
         "need": ["hash|title|tmdbid"],
+        "fixed": True,
+    },
+    "offline": {
+        "fn": w_offline.run,
+        "summary": "磁力/链接 → CloudDrive 网盘离线下载（AddOfflineFiles）",
+        "need": ["magnet|url"],
         "fixed": True,
     },
 }

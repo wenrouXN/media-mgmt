@@ -12,7 +12,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_services_dir_has_core_services():
     ids = list_service_ids()
-    for req in ("moviepilot", "hdhive", "pansou", "telegram_music", "douyin", "bilibili", "qbittorrent"):
+    for req in (
+        "moviepilot",
+        "hdhive",
+        "pansou",
+        "telegram_music",
+        "douyin",
+        "bilibili",
+        "qbittorrent",
+        "clouddrive",
+    ):
         assert req in ids
 
 

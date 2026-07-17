@@ -44,5 +44,15 @@
     "proxy": null,
     "timeout": 30,
     "download_dir": "./downloads/hongguo"
+  },
+  "clouddrive": {
+    "url": "http://127.0.0.1:19798",
+    "token": "replace-with-clouddrive-api-token",
+    "default_folder": "/115open/download/av",
+    "timeout": 30,
+    "insecure": true,
+    "save_paths": [
+      { "path": "/115open/download/av", "label": "AV" }
+    ]
   }
 }

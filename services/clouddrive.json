@@ -1,0 +1,17 @@
+{
+  "id": "clouddrive",
+  "name": "CloudDrive",
+  "kind": "cloud_offline",
+  "description": "CloudDrive2 gRPC magnet offline download (AddOfflineFiles)",
+  "config_section": "clouddrive",
+  "required_config": ["token"],
+  "ops": [
+    "health",
+    "add_offline",
+    "list_offline"
+  ],
+  "health": {
+    "type": "op",
+    "op": "health"
+  }
+}

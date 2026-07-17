@@ -1,0 +1,96 @@
+syntax = "proto3";
+package clouddrive;
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+service CloudDriveFileSrv {
+  rpc GetSystemInfo(google.protobuf.Empty) returns (CloudDriveSystemInfo) {}
+  rpc GetToken(GetTokenRequest) returns (JWTToken) {}
+  rpc GetApiTokenInfo(google.protobuf.StringValue) returns (TokenInfo) {}
+  rpc GetAccountStatus(google.protobuf.Empty) returns (AccountStatusResult) {}
+  rpc CreateFolder(CreateFolderRequest) returns (CreateFolderResult) {}
+  rpc FindFileByPath(FindFileByPathRequest) returns (CloudDriveFile) {}
+  rpc AddOfflineFiles(AddOfflineFileRequest) returns (FileOperationResult) {}
+  rpc ListOfflineFilesByPath(FileRequest) returns (OfflineFileListResult) {}
+  rpc GetOfflineQuotaInfo(OfflineQuotaRequest) returns (OfflineQuotaInfo) {}
+}
+
+message CloudDriveSystemInfo {
+  bool isLogin = 1;
+  string userName = 2;
+}
+message GetTokenRequest {
+  string userName = 1;
+  string password = 2;
+  optional string totpCode = 3;
+}
+message JWTToken {
+  bool success = 1;
+  string errorMessage = 2;
+  string token = 3;
+  google.protobuf.Timestamp expiration = 4;
+}
+message TokenInfo {
+  string token = 1;
+  string name = 2;
+}
+message AccountStatusResult {
+  string userName = 1;
+  string email = 2;
+  bool isActive = 3;
+}
+message CreateFolderRequest {
+  string parentPath = 1;
+  string folderName = 2;
+}
+message CloudDriveFile {
+  string id = 1;
+  string name = 2;
+  string fullPathName = 3;
+  bool isDirectory = 4;
+  bool canOfflineDownload = 66;
+}
+message CreateFolderResult {
+  CloudDriveFile folderCreated = 1;
+  FileOperationResult result = 2;
+}
+message FindFileByPathRequest {
+  string parentPath = 1;
+  string path = 2;
+}
+message FileRequest {
+  string path = 1;
+}
+message AddOfflineFileRequest {
+  string urls = 1;
+  string toFolder = 2;
+  optional uint64 checkFolderAfterSecs = 3;
+}
+message FileOperationResult {
+  bool success = 1;
+  string errorMessage = 2;
+  repeated string resultFilePaths = 3;
+}
+message OfflineFile {
+  string name = 1;
+  uint64 size = 2;
+  string url = 3;
+  int32 status = 4;
+  string infoHash = 5;
+  string fileId = 6;
+  double percendDone = 9;
+}
+message OfflineFileListResult {
+  repeated OfflineFile offlineFiles = 1;
+}
+message OfflineQuotaRequest {
+  string cloudName = 1;
+  string cloudAccountId = 2;
+  optional string path = 3;
+}
+message OfflineQuotaInfo {
+  int32 total = 1;
+  int32 used = 2;
+  int32 left = 3;
+}

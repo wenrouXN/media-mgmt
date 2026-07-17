@@ -3,3 +3,5 @@ python-dotenv
 websockets
 httpx
 pytest
+grpcio>=1.60
+protobuf>=4.25

@@ -23,6 +23,7 @@ REQUIRED = {
     "retry",
     "upgrade",
     "playlist",
+    "offline",
 }
 
 

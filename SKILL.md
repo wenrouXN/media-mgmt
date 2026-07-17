@@ -28,6 +28,7 @@ description: "跨服务媒体编排（认片/搜下/缺集诊断/115·HDHive 转
 | 听歌 | `run listen` | q | 多选用 button_index；search_only=true 只列 |
 | 公共歌单链接 | `run playlist` | url | 要下再对 queries 调 listen（无批量下） |
 | 抖音/B站/TikTok/红果链接 | `run link` | url + intent | 细节 → `references/link-intents.md` |
+| **盘点/片单/视频里提到的影视** | **先 parse** + 内容抽取 | url | 穷尽元数据；不够再下载+ASR/OCR（**禁止先整段下载**） |
 
 未命中上表 → `media_ctl workflows` 或 `call <svc> <op>`；**不要**直接 mp_api 手搓。
 
@@ -48,6 +49,7 @@ python3 scripts/media_ctl.py call <service> <op> --param k=v
 5. **真要下**：去掉 dry_run；用户未点头禁止当成功。风险种要 `--param force=true` 且用户确认。
 6. **网盘**：`run hdhive ... --param transfer=true`，不要先 PT。
 7. **缺集**：**只先 updates**；禁止 identify+library+subscribe 连打。
+8. **盘点/片单**：**先 parse 穷尽**（desc/hashtag/`chapter_list`）；不够再下载+ASR。禁止先整段下载。
 
 ### 复制即用
 
@@ -72,6 +74,7 @@ python3 scripts/media_ctl.py run doctor
 7. tmdb 认片：双类型试探 + 标题打分；空 shell=失败。detail → watch 实现已修，仍建议带 title+episode/media_type。
 8. 完成看 `history/transfer`，不只 active downloads。
 9. 破坏性操作二次确认。
+10. **盘点/片单**：先 parse 穷尽元数据；不够再下载+ASR。禁止先整段下载。
 
 ## 4. 失败怎么补一枪（别重开全套）
 
@@ -83,6 +86,8 @@ python3 scripts/media_ctl.py run doctor
 | hdhive 失败要本地种 | `run watch --param prefer=pt`（或 skip_hdhive） |
 | 转存密码/参数错误 | 见 `references/hdhive-115.md`，先 share115 冒烟 |
 | 短链只解析不够 | `run link` + 明确 intent=下载/评论/… |
+| 盘点只有 hashtag / 届次 chapter | 先声明 API 天花板 → 下载+ASR（可 OCR/评论交叉）→ identify；见 link-intents |
+| 盘点误先整段下载 | 补跑 parse 归档字段；下次禁止倒序 |
 
 ## 5. 按需加载
 
@@ -91,7 +96,7 @@ python3 scripts/media_ctl.py run doctor
 | 19 个剧本目录与场景策略 | `references/workflows.md` |
 | 精确 CLI / REST / 环境坑 | `references/commands.md` |
 | 网盘成功判据 / P115 | `references/hdhive-115.md` |
-| 短链意图表 / 红果 | `references/link-intents.md` |
+| 短链意图表 / 红果 / **盘点内容抽取** | `references/link-intents.md` |
 
 默认：**本文件决策表 + 一枪 run**。细节不够再开 ref。
 

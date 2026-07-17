@@ -47,11 +47,9 @@ _FX_SUB_POS = [
 ]
 _FX_SUB_RE = re.compile("|".join(_FX_SUB_POS), re.I)
 
-# Original disc / remux — exclude for movie default unless user allows
+# Original disc only — REMUX is allowed for movie default.
+# exclude_disc drops 原盘/BDMV/ISO/BD25-100, not REMUX.
 _DISC_POS = [
-    r"\bREMUX\b",
-    r"\bBDREMUX\b",
-    r"\bUHD.?REMUX\b",
     "原盘",
     "蓝光原盘",
     r"\bCOMPLETE.?BLURAY\b",
@@ -92,7 +90,7 @@ def has_fx_subtitle(text: str) -> bool:
 
 
 def is_original_disc(text: str) -> bool:
-    """True for remux / 原盘 / BDMV-style disc rips."""
+    """True for 原盘 / BDMV / ISO disc rips. REMUX is NOT treated as disc."""
     return bool(_DISC_RE.search(text or ""))
 
 

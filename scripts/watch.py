@@ -687,7 +687,7 @@ def cmd_watch(args: argparse.Namespace) -> int:
     mtype_raw = str(media.get("type") or args.media_type or "")
     is_tv = mtype_raw in {"电视剧", "tv", "TV", "show", "series"} or args.episode is not None
     # TV: prefer 4K SDR; if missing, fallback ranks highest seeded quality.
-    # Movie: exclude 原盘/REMUX; prefer high-quality fx subtitles, then best Chinese quality.
+    # Movie: exclude 原盘 (REMUX allowed); prefer fx subtitles, then best Chinese quality.
     prefer_resolution = args.resolution or ("2160p" if is_tv else None)
     hdr_mode = getattr(args, "hdr_mode", None) or ("sdr" if is_tv else "any")
     require_chinese = bool(getattr(args, "require_chinese", False))
@@ -879,7 +879,7 @@ def build_watch_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-disc",
         action="store_true",
-        help="Allow 原盘/REMUX candidates (movie default excludes them)",
+        help="Allow 原盘/BDMV/ISO candidates (movie default excludes disc; REMUX already allowed)",
     )
     parser.add_argument(
         "--no-fx-sub",

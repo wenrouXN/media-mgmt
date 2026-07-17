@@ -50,7 +50,7 @@ python3 scripts/media_ctl.py call <service> <op> --param k=v
 5. **真要下**：去掉 dry_run；用户未点头禁止当成功。风险种要 `--param force=true` 且用户确认。
 5b. **PT 质量默认**：
    - **剧集**：优先 **4K/2160p + SDR**（有种）；没有则**有种最高分辨率**。
-   - **电影**：排除原盘/REMUX；优先**高质量特效字幕**；否则**最高质量中文**。
+   - **电影**：排除原盘（**允许 REMUX**）；优先**高质量特效字幕**；否则**最高质量中文**。
    - 覆盖：`resolution` / `hdr_mode` / `allow_disc=true` / `no_fx_sub=true` / `no_require_chinese=true`。
 6. **网盘**：`run hdhive ... --param transfer=true`，不要先 PT。
 7. **缺集**：**只先 updates**；禁止 identify+library+subscribe 连打。
@@ -82,7 +82,7 @@ python3 scripts/media_ctl.py run doctor
 9. 破坏性操作二次确认。
 10. **盘点/片单**：先 parse 穷尽元数据；不够再下载+ASR。禁止先整段下载。
 11. **磁力离线**：`run offline` 成功 = CloudDrive `AddOfflineFiles` 成功，不是 qB active。路径须支持离线。
-12. **PT 选种**：剧集 `4K SDR → 有种最高质量`；电影 `非原盘 → 特效字幕 → 最高质量中文`；零做种最后才考虑。
+12. **PT 选种**：剧集 `4K SDR → 有种最高质量`；电影 `非原盘(允许REMUX) → 特效字幕 → 最高质量中文`；零做种最后才考虑。
 
 ## 4. 失败怎么补一枪（别重开全套）
 

@@ -117,8 +117,11 @@ def test_prefer_seeded_4k_sdr_over_more_seeders_1080():
 
 
 def test_disc_and_fx_detection():
-    assert is_original_disc("Movie 2024 UHD BluRay REMUX")
+    # REMUX is allowed; only true 原盘/BDMV counts as disc
+    assert not is_original_disc("Movie 2024 UHD BluRay REMUX")
+    assert not is_original_disc("Movie 2024 BDRemux 中字")
     assert is_original_disc("电影 蓝光原盘 BD50")
+    assert is_original_disc("Movie 2024 BDMV ISO")
     assert not is_original_disc("Movie 2024 2160p WEB-DL 中字")
     assert has_fx_subtitle("Movie 2024 1080p 特效字幕")
     assert has_fx_subtitle("Movie 2024 1080p ASS 内封")
@@ -130,6 +133,26 @@ def test_movie_prefers_fx_sub_over_plain_chinese_higher_res():
         _item("Movie 2024 2160p 中字", seeders=50),
         _item("Movie 2024 1080p 特效字幕 中字", seeders=8),
         _item("Movie 2024 UHD BluRay REMUX 中字", seeders=99),
+        _item("Movie 2024 BD50 原盘 中字", seeders=120),
+    ]
+    picked = pick_torrent(
+        items,
+        prefer_resolution="",
+        require_chinese=True,
+        prefer_fx_sub=True,
+        exclude_disc=True,
+        top_n=4,
+    )
+    title = picked["selected"]["torrent_info"]["title"]
+    assert "特效字幕" in title
+    assert "原盘" not in title
+
+
+def test_movie_remux_allowed_over_disc():
+    items = [
+        _item("Movie 2024 BD50 原盘 中字", seeders=90),
+        _item("Movie 2024 UHD BluRay REMUX 中字", seeders=12),
+        _item("Movie 2024 720p 中字", seeders=40),
     ]
     picked = pick_torrent(
         items,
@@ -140,8 +163,8 @@ def test_movie_prefers_fx_sub_over_plain_chinese_higher_res():
         top_n=3,
     )
     title = picked["selected"]["torrent_info"]["title"]
-    assert "特效字幕" in title
-    assert "REMUX" not in title
+    assert "REMUX" in title
+    assert "原盘" not in title
 
 
 def test_movie_fallback_best_chinese_when_no_fx():

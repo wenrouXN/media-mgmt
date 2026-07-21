@@ -77,7 +77,7 @@ python3 scripts/media_ctl.py call <service> <op> --param k=v
    - **剧集**：优先 **4K/2160p + SDR**（有种）；没有则**有种最高分辨率**。
    - **电影**：排除原盘（**允许 REMUX**）；优先**高质量特效字幕**；否则**最高质量中文**。
    - 覆盖：`resolution` / `hdr_mode` / `allow_disc=true` / `no_fx_sub=true` / `no_require_chinese=true`。
-6. **网盘 = NextFind OpenAPI only**：`run nextfind` / `watch` 网盘段；`prefer=nextfind|nf|auto`。转存以 **resources 有 slug** + **`result.transfer.success`** 为准。不要先 PT。
+6. **网盘 = NextFind OpenAPI only**（[NextFind 介绍](https://wiki.nextemby.com/#/nextfind_intro)）：`run nextfind` / `watch` 网盘段；`prefer=nextfind|nf|auto`。转存以 **resources 有 slug** + **`result.transfer.success`** 为准。不要先 PT。
 7. **缺集**：**只先 updates**；禁止 identify+library+subscribe 连打。
 8. **盘点/片单**：**先 parse 穷尽**（desc/hashtag/`chapter_list`）；不够再下载+ASR。禁止先整段下载。
 

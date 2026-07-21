@@ -20,7 +20,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     search_params = dict(params)
     # Retry almost always wants PT candidates; default force_mp_search unless NF-only forced.
     prefer = str(params.get("prefer") or "").lower()
-    if prefer not in {"netdisk", "hdhive", "nextfind", "nf"} and not params.get("force_mp_search"):
+    if prefer not in {"netdisk", "nextfind", "nf"} and not params.get("force_mp_search"):
         search_params.setdefault("force_mp_search", True)
 
     searched = search_wf.run(search_params)
@@ -30,7 +30,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         watch_params = {
             **params,
             "yes": True,
-            "skip_hdhive": params.get("skip_hdhive", True),
+            "skip_nextfind": params.get("skip_nextfind", True),
             "prefer": params.get("prefer") or "pt",
         }
         # map pick_n if provided

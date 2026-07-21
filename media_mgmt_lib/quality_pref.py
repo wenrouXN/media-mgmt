@@ -1,10 +1,10 @@
-"""Shared quality preference matching for PT torrents and HDHive resources."""
+"""Shared quality preference matching for PT torrents and NextFind resources."""
 from __future__ import annotations
 
 import re
 from typing import Any
 
-# Chinese audio / subtitle signals commonly seen on CN trackers / HDHive
+# Chinese audio / subtitle signals commonly seen on CN trackers / NextFind
 _CN_POS = [
     "中字",
     "简中",
@@ -287,7 +287,7 @@ def parse_quality_params(params: dict[str, Any]) -> dict[str, Any]:
 
 
 def resource_blob(item: dict[str, Any]) -> str:
-    """Build a searchable text blob from HDHive DOM or NextFind OpenAPI resource rows."""
+    """Build a searchable text blob from NextFind OpenAPI resource rows."""
     if not isinstance(item, dict):
         return ""
     parts: list[Any] = [
@@ -323,7 +323,7 @@ def pick_best_resource(
     prefer_fx_sub: bool = True,
     exclude_disc: bool = False,
 ) -> dict[str, Any] | None:
-    """Shared ranker for netdisk resource rows (NextFind OpenAPI + legacy HDHive DOM).
+    """Shared ranker for netdisk resource rows (NextFind OpenAPI resource rows).
 
     Soft score from quality_score + resolution/chinese/unlock signals; hard prefer via matches_quality.
     """
@@ -361,7 +361,7 @@ def pick_best_resource(
                 score -= int(pts)
         except (TypeError, ValueError):
             pass
-        # Legacy HDHive DOM signals
+        # Optional DOM-shaped fields
         tags = str(it.get("tags") or "")
         cost = str(it.get("cost") or "")
         if "官组" in tags:

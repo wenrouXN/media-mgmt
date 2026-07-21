@@ -181,7 +181,7 @@ def fill_missing(params: dict[str, Any]) -> dict[str, Any]:
 
     # prefer=pt → skip netdisk attempt
     try_netdisk = prefer not in {"pt", "torrent", "moviepilot", "mp"}
-    try_pt_from_nf = prefer not in {"netdisk", "hdhive", "115", "cloud"}
+    try_pt_from_nf = prefer not in {"netdisk", "nextfind", "nf", "115", "cloud"}
 
     # 2) netdisk first
     if try_netdisk and netdisk_items:

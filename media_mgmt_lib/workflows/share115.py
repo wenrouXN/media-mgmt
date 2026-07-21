@@ -17,7 +17,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         return fail(
             "masked_or_invalid_share_password",
             share_url=text.split("password=")[0] + ("password=***" if "password=" in text else ""),
-            hint="Need plaintext 115 password; re-run HDHive unlock or provide password explicitly",
+            hint="Need plaintext 115 password; re-run NextFind unlock or provide password explicitly",
         )
     result = mp("transfer_share", share_url=share_url)
     code = None

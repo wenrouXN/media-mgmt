@@ -24,7 +24,7 @@ from media_mgmt_lib.watch_identify import (  # noqa: E402
 )
 from media_mgmt_lib.watch_search import search_pt_resources  # noqa: E402
 from media_mgmt_lib.watch_actions import (  # noqa: E402
-    try_hdhive,
+    try_nextfind,
     ensure_clients,
     download_selected,
     status_snapshot,
@@ -80,12 +80,12 @@ def build_watch_parser() -> argparse.ArgumentParser:
     parser.add_argument("--episode", type=int)
     parser.add_argument(
         "--prefer",
-        choices=["auto", "pt", "hdhive", "nextfind", "nf"],
+        choices=["auto", "pt", "nextfind", "nf"],
         default="auto",
-        help="Resource preference (hdhive/nextfind/nf = netdisk OpenAPI first)",
+        help="Resource preference (nextfind/nf = netdisk OpenAPI first)",
     )
-    parser.add_argument("--skip-hdhive", action="store_true")
-    parser.add_argument("--hdhive-only", action="store_true")
+    parser.add_argument("--skip-nextfind", action="store_true", help="Skip NextFind netdisk path")
+    parser.add_argument("--nextfind-only", action="store_true", help="Only try NextFind netdisk, no PT")
     parser.add_argument("--force-pt", action="store_true")
     parser.add_argument("--sites", help="comma-separated site ids")
     parser.add_argument("--resolution", default=None)
@@ -110,7 +110,7 @@ def build_watch_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--wait", type=int, default=0)
     parser.add_argument("--subscribe", action="store_true")
-    parser.add_argument("--hdhive-timeout", type=float, default=90)
+    parser.add_argument("--nextfind-timeout", type=float, default=90)
     return parser
 
 

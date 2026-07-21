@@ -10,7 +10,7 @@
     "timeout": 45
   },
   "telegram_music": {
-    "bot": "@music_v1bot",
+    "bot": "@your_music_bot",
     "download_dir": "./downloads/music",
     "button_index": 1,
     "search_timeout": 20,
@@ -18,12 +18,12 @@
     "poll_interval": 1
   },
   "douyin": {
-    "api_base_url": "http://localhost:7899",
+    "api_base_url": "http://127.0.0.1:7899",
     "download_dir": "./downloads/douyin",
     "timeout": 60
   },
   "bilibili": {
-    "api_base_url": "http://localhost:7899",
+    "api_base_url": "http://127.0.0.1:7899",
     "download_dir": "./downloads/bilibili",
     "quality": 80,
     "timeout": 120
@@ -40,49 +40,19 @@
   },
   "clouddrive": {
     "url": "http://127.0.0.1:19798",
-    "default_folder": "/115open/download/中转/中转",
+    "default_folder": "/cloud/download/staging",
     "timeout": 30,
     "insecure": true,
     "save_paths": [
       {
-        "path": "/115open/download/中转/中转",
-        "label": "中转",
-        "aliases": [
-          "中转",
-          "download",
-          "默认",
-          "staging"
-        ]
+        "path": "/cloud/download/staging",
+        "label": "staging",
+        "aliases": ["staging", "download", "default", "中转"]
       },
       {
-        "path": "/115open/download/av",
-        "label": "AV",
-        "aliases": [
-          "av",
-          "AV"
-        ]
-      },
-      {
-        "path": "/115open/download/中转/else",
-        "label": "else",
-        "aliases": [
-          "else",
-          "其他"
-        ]
-      },
-      {
-        "path": "/115open/media/av/collections/国产原创",
-        "label": "国产原创",
-        "aliases": [
-          "国产原创"
-        ]
-      },
-      {
-        "path": "/115open/media/av/collections/三级写真",
-        "label": "三级写真",
-        "aliases": [
-          "三级写真"
-        ]
+        "path": "/cloud/download/other",
+        "label": "other",
+        "aliases": ["other", "else", "其他"]
       }
     ]
   }

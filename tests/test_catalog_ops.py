@@ -14,7 +14,6 @@ def test_services_dir_has_core_services():
     ids = list_service_ids()
     for req in (
         "moviepilot",
-        "hdhive",
         "nextfind",
         "telegram_music",
         "douyin",

@@ -15,7 +15,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
 
     Default preference order (CEO 2026-07-20):
       1) nf_fill (NextFind resources once: netdisk grab, then PT rows from same result)
-      2) PT via watch with skip_hdhive (only if netdisk/NF path fails or prefer=pt)
+      2) PT via watch with skip_nextfind (only if netdisk/NF path fails or prefer=pt)
 
     params:
       title | tmdbid
@@ -23,7 +23,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
       resolution (default 2160p for upgrade intent)
       require_chinese / lang=zh
       hdr_mode=sdr|hdr|any
-      prefer: hdhive|nextfind|pt|auto
+      prefer: nextfind|pt|auto
       execute / yes / dry_run / probe / force
       force_mp_search: allow MP re-search inside fill when NF empty
     """
@@ -48,9 +48,9 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         if params.get("no_chinese") in (True, "true", "1", "yes"):
             qpref["require_chinese"] = False
 
-    prefer = str(params.get("prefer") or "hdhive").lower()
-    if prefer in {"hidive", "hd", "nextfind", "nf", "openapi", "netdisk"}:
-        prefer = "hdhive"
+    prefer = str(params.get("prefer") or "nextfind").lower()
+    if prefer in {"nextfind", "nf", "openapi", "netdisk", "hd"}:
+        prefer = "nextfind"
     execute = str(params.get("execute") or params.get("yes") or "").lower() in {"1", "true", "yes"}
     dry_run = str(params.get("dry_run") or "").lower() in {"1", "true", "yes"}
     if dry_run:
@@ -122,8 +122,8 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         "quality": qpref,
         "identify_path": identify_path,
         "steps": [
-            "nf_fill" if prefer in {"hdhive", "auto"} else "pt",
-            "pt_fallback" if prefer in {"hdhive", "auto"} else None,
+            "nf_fill" if prefer in {"nextfind", "auto"} else "pt",
+            "pt_fallback" if prefer in {"nextfind", "auto"} else None,
             "duplicates_compare",
         ],
         "note": "不自动删除旧版本；成功后用 duplicates 建议保留哪条",
@@ -132,13 +132,13 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
 
     actions: dict[str, Any] = {}
     fill_result = None
-    hdhive_result = None
+    nextfind_result = None
     pt_result = None
     needs_confirm = False
     chosen_source = None
 
     # 1) NF fill (shared helper) — probe or execute
-    if live and prefer in {"hdhive", "auto"}:
+    if live and prefer in {"nextfind", "auto"}:
         from media_mgmt_lib.workflows.nf_fill import fill_missing
 
         fill_params: dict[str, Any] = {
@@ -167,14 +167,14 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
             "summary": fill_result.get("summary"),
         }
         # alias for older consumers
-        hdhive_result = {
+        nextfind_result = {
             "success": fill_result.get("success"),
             "source": "nextfind_openapi" if fill_result.get("path") in {"netdisk", "nextfind_openapi"} else fill_result.get("path"),
             "path": fill_result.get("path"),
             "slug": (fill_result.get("best") or {}).get("slug") if isinstance(fill_result.get("best"), dict) else fill_result.get("slug"),
             "detail": fill_result,
         }
-        actions["hdhive"] = hdhive_result
+        actions["nextfind"] = nextfind_result
         if fill_result.get("success"):
             path = str(fill_result.get("path") or "")
             if path in {"netdisk", "nextfind_openapi"}:
@@ -185,17 +185,17 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
                 chosen_source = path or "nextfind_openapi"
         else:
             plan["nf_fill_fail"] = fill_result.get("error") or fill_result.get("stage")
-    elif not live and prefer in {"hdhive", "auto"}:
+    elif not live and prefer in {"nextfind", "auto"}:
         actions["nf_fill"] = {
             "skipped": True,
             "reason": "dry_run_no_probe",
             "hint": "execute=true 才会真转存；probe=true 可探测 fill 路径",
         }
-        actions["hdhive"] = actions["nf_fill"]
+        actions["nextfind"] = actions["nf_fill"]
 
     # 2) PT fallback / primary (watch with skip netdisk)
     do_pt = prefer == "pt" or (
-        prefer in {"hdhive", "auto"}
+        prefer in {"nextfind", "auto"}
         and (not fill_result or not fill_result.get("success"))
     )
     # If fill already chose pt path with success under dry, still report
@@ -244,7 +244,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
                     "episode": episode,
                     "yes": True,
                     "prefer": "pt",
-                    "skip_hdhive": True,
+                    "skip_nextfind": True,
                     "resolution": qpref.get("resolution") or "2160p",
                     "require_chinese": qpref.get("require_chinese"),
                     "hdr_mode": qpref.get("hdr_mode"),
@@ -267,7 +267,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     def _netdisk_ok(src: str | None) -> bool:
         if not src:
             return False
-        return src in {"hdhive_115", "nextfind_openapi"} or str(src).startswith("nextfind") or str(src).startswith("hdhive")
+        return src in {"nextfind_openapi"} or str(src).startswith("nextfind")
 
     summary_bits = [
         f"升级《{title}》",

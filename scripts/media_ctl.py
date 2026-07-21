@@ -41,7 +41,7 @@ def _parse_params(items: list[str] | None) -> dict[str, Any]:
                 params[num_key] = int(params[num_key])
             except ValueError:
                 pass
-    for bool_key in ("yes", "dry_run", "skip_hdhive", "subscribe", "transfer", "auto", "apply", "hdhive_only"):
+    for bool_key in ("yes", "dry_run", "skip_nextfind", "subscribe", "transfer", "auto", "apply", "nextfind_only"):
         if bool_key in params:
             params[bool_key] = str(params[bool_key]).lower() in {"1", "true", "yes", "on"}
     return params

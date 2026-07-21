@@ -16,7 +16,7 @@ python3 scripts/media_ctl.py run <name> --param key=value
 2. **参数尽量满**：`title` + 已知则 `tmdbid` + 有集则 `episode`/`season` + 已知则 `media_type=tv|movie`。
 3. **watch 同 tmdb 电影/剧**：TMDB 数字 id 可撞车；务必带用户标题；有集数会偏 TV。
 4. **诊断不下**：`updates`/`library`/`identify`/`dry_run=true`。真下须用户意图明确。
-5. **网盘**：`nextfind`（或别名 `hdhive`）+ 尽量 `media_type`；先 `dry_run=true`；可转存以 **resources 有 slug** 为准（`resource_authority=resources_op`）。旧 pansou/Cloak 已退役。不要先 PT。
+5. **网盘**：`nextfind` + 尽量 `media_type`；先 `dry_run=true`；可转存以 **resources 有 slug** + **`result.transfer.success`** 为准。不要先 PT。
 6. **有没有**：`library` = NextFind only；MP 只 transfer/download 整理记录。
 
 ## 目录（21）
@@ -39,7 +39,6 @@ python3 scripts/media_ctl.py run <name> --param key=value
 | catchup | 追更计划/执行 | title\|tmdbid | 先 NF 补缺；`execute=true` 才执行 |
 | duplicates | 重复留哪个 | title\|tmdbid | 建议 keep；不自动删 |
 | nextfind | 转存网盘（主） | q\|title\|tmdbid | OpenAPI search→resources→transfer |
-| hdhive | 转存网盘（别名） | q\|title\|tmdbid | 同 nextfind |
 | offline | 磁力/CloudDrive 离线 | magnet\|url | CloudDrive AddOfflineFiles |
 | retry | 失败换源 | title | search；auto 再 watch |
 | upgrade | 升画质 / 质量升级 | title\|tmdbid | probe/dry 先；execute 网盘→PT |
@@ -63,10 +62,10 @@ python3 scripts/media_ctl.py run <name> --param key=value
 
 ### 网盘转存
 
-- 用户要网盘 → **先** `run nextfind`（或 `hdhive`），`media_type` + 先 dry
+- 用户要网盘 → **先** `run nextfind`，`media_type` + 先 dry
 - **有 `warnings` 且 resources 空 → 不宣称可转存**
 - 已有明文 115 链 → `run share115`
-- 成功判据与排障 → `hdhive-115.md`
+- 成功判据与排障 → `nextfind-115.md`
 
 ### 认片 / 有没有
 

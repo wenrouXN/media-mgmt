@@ -7,7 +7,7 @@
 
 不要用本路径：
 
-- 115 **分享转存 / 找源** → `run nextfind`（或别名 `run hdhive`）/ 已有链 `run share115`
+- 115 **分享转存 / 找源** → `run nextfind` / 已有链 `run share115`
 - 本机 PT 下载 → `run watch --prefer pt`
 
 ## 配置
@@ -95,7 +95,7 @@ python3 scripts/media_ctl.py call clouddrive list_offline \
 
 | 能力 | workflow |
 |------|----------|
-| NextFind 找源 + 转存 | `nextfind` / `hdhive`（别名） |
+| NextFind 找源 + 转存 | `nextfind` |
 | 已有 115 **分享** → 转存 | `share115` |
 | **磁力** → CloudDrive 离线 | `offline` |
 | PT 本机种 | `watch prefer=pt` |

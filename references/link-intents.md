@@ -91,7 +91,7 @@ douyin / hybrid **只有** 元数据 + 下载，**没有** 口播 ASR / 画面 O
 5. **查库 / 转存 / 下载**  
    - 库里有的报已有  
    - 缺的优先 `run nextfind ... dry_run=true` 确认后再 transfer  
-   - NextFind `no_results` / `no_resources` → 问或按用户意图 `watch prefer=pt skip_hdhive`  
+   - NextFind `no_results` / `no_resources` → 问或按用户意图 `watch prefer=pt 或 skip_nextfind=true`  
    - 老剧 PT 可能 `safety_confirmation_required`：用户明确要下后才 `force` + 合理 `pick_index`
 
 ### 不要做的事

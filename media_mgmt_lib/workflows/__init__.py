@@ -18,7 +18,6 @@ from media_mgmt_lib.workflows import updates as w_updates
 from media_mgmt_lib.workflows import schedule as w_schedule
 from media_mgmt_lib.workflows import catchup as w_catchup
 from media_mgmt_lib.workflows import duplicates as w_duplicates
-from media_mgmt_lib.workflows import hdhive as w_hdhive
 from media_mgmt_lib.workflows import nextfind as w_nextfind
 from media_mgmt_lib.workflows import retry as w_retry
 from media_mgmt_lib.workflows import upgrade as w_upgrade
@@ -116,12 +115,6 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "need": ["title|tmdbid"],
         "fixed": True,
     },
-    "hdhive": {
-        "fn": w_hdhive.run,
-        "summary": "网盘源抓取：NextFind OpenAPI 别名",
-        "need": ["q|title"],
-        "fixed": True,
-    },
     "nextfind": {
         "fn": w_nextfind.run,
         "summary": "NextFind OpenAPI：认片/资源/转存/订阅（主路径）",
@@ -142,7 +135,7 @@ REGISTRY: dict[str, dict[str, Any]] = {
     },
     "upgrade": {
         "fn": w_upgrade.run,
-        "summary": "库内质量升级：默认 HDHive→115，再 PT；支持 4K/中文/SDR 过滤",
+        "summary": "库内质量升级：默认 NextFind 网盘→PT；支持 4K/中文/SDR 过滤",
         "need": ["title|tmdbid"],
         "fixed": True,
     },

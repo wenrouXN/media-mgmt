@@ -160,7 +160,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
                         "season": season,
                         "episode": item["episode"],
                         "yes": True,
-                        "skip_hdhive": True,
+                        "skip_nextfind": True,
                         "prefer": "pt",
                     }
                 )
@@ -208,7 +208,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
                         "season": season,
                         "episode": item["episode"],
                         "yes": True,
-                        "skip_hdhive": True,
+                        "skip_nextfind": True,
                         "prefer": "pt",
                     }
                 )

@@ -9,7 +9,7 @@ import scripts.mp_api as mp_api
 from media_mgmt_lib.torrent_pick import summarize_candidate
 from media_mgmt_lib.watch_stages import stage as _stage
 
-def try_hdhive(
+def try_nextfind(
     media: dict[str, Any],
     season: int | None,
     episode: int | None,
@@ -17,14 +17,14 @@ def try_hdhive(
     timeout: float = 90,
     transfer: bool = True,
 ) -> dict[str, Any] | None:
-    """Netdisk grab via NextFind OpenAPI (hdhive alias). On failure watch continues to PT."""
+    """Netdisk grab via NextFind OpenAPI (NextFind OpenAPI). On failure watch continues to PT."""
     tmdb_id = media.get("tmdb_id") or media.get("tmdbid")
     title = media.get("title") or media.get("en_title") or media.get("original_title") or ""
     if not tmdb_id and not title:
         return None
     mtype_raw = str(media.get("type") or "")
     kind = "movie" if mtype_raw in {"电影", "movie"} else "tv"
-    _stage("hdhive_start", tmdb_id=tmdb_id, kind=kind, timeout=timeout, transfer=transfer)
+    _stage("nextfind_start", tmdb_id=tmdb_id, kind=kind, timeout=timeout, transfer=transfer)
     try:
         import media_mgmt_lib.ops.bootstrap  # noqa: F401
         from media_mgmt_lib.ops import call_op
@@ -40,8 +40,8 @@ def try_hdhive(
         }
         result = call_op("nextfind", "grab", params)
     except Exception as e:  # noqa: BLE001
-        _stage("hdhive_failed", detail=str(e))
-        return {"success": False, "error": "hdhive_exec_failed", "detail": str(e), "season": season, "episode": episode}
+        _stage("nextfind_failed", detail=str(e))
+        return {"success": False, "error": "nextfind_exec_failed", "detail": str(e), "season": season, "episode": episode}
 
     ok = bool(isinstance(result, dict) and result.get("success"))
     share_url = (result or {}).get("share_url") if isinstance(result, dict) else None
@@ -59,7 +59,7 @@ def try_hdhive(
         )
     )
     _stage(
-        "hdhive_done",
+        "nextfind_done",
         success=ok,
         path=path or source,
         has_share=bool(share_url),

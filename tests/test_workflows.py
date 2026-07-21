@@ -19,7 +19,7 @@ REQUIRED = {
     "schedule",
     "catchup",
     "duplicates",
-    "hdhive",
+    "nextfind",
     "retry",
     "upgrade",
     "playlist",
@@ -37,17 +37,17 @@ def test_upgrade_workflow_dry_plan():
             "resolution": "2160p",
             "hdr_mode": "sdr",
             "require_chinese": True,
-            "prefer": "hdhive",
+            "prefer": "nextfind",
             "dry_run": True,
         },
     )
     assert r.get("workflow") == "upgrade"
-    assert r.get("prefer") == "hdhive"
+    assert r.get("prefer") == "nextfind"
     assert r.get("quality", {}).get("resolution") == "2160p"
     assert r.get("quality", {}).get("hdr_mode") == "sdr"
     assert r.get("quality", {}).get("require_chinese") is True
     assert "plan" in r
-    assert (r.get("actions") or {}).get("hdhive", {}).get("skipped") is True
+    assert (r.get("actions") or {}).get("nextfind", {}).get("skipped") is True
 
 
 def test_schedule_and_catchup_plan_live():

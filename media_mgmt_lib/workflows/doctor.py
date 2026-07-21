@@ -23,9 +23,8 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
 
     pipeline: dict[str, Any] = {
         "netdisk_primary": "nextfind_openapi",
-        "hdhive_alias": True,
         "pansou_retired": True,
-        "cloak_hdhive_retired": True,
+        "cloak_netdisk_retired": True,
         "search_default": "nextfind (force_mp_search for MP)",
         "subscribe": "dual_write MP+NF",
         "fill": "workflows.nf_fill.fill_missing",

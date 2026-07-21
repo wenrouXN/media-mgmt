@@ -54,7 +54,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         "stages": (report or {}).get("stages") if isinstance(report, dict) else None,
     }
     if isinstance(report, dict):
-        for k in ("warnings", "lock", "selected", "source", "download", "hdhive", "note"):
+        for k in ("warnings", "lock", "selected", "source", "download", "nextfind", "note"):
             if k in report:
                 out[k] = report[k]
     return out

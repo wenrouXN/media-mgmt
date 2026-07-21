@@ -11,7 +11,7 @@ from media_mgmt_lib.watch_actions import (
     ensure_clients,
     maybe_subscribe,
     status_snapshot,
-    try_hdhive,
+    try_nextfind,
 )
 from media_mgmt_lib.watch_identify import identify_media
 from media_mgmt_lib.watch_pipeline import pick_for_watch
@@ -51,9 +51,9 @@ def params_to_args(params: dict[str, Any]) -> SimpleNamespace:
         tmdbid=int(tmdbid) if tmdbid not in (None, "") else None,
         season=int(params["season"]) if params.get("season") not in (None, "") else None,
         episode=int(params["episode"]) if params.get("episode") not in (None, "") else None,
-        prefer=str(params.get("prefer") or "auto"),
-        skip_hdhive=b("skip_hdhive"),
-        hdhive_only=b("hdhive_only"),
+        prefer=(lambda p: "nextfind" if str(p or "auto").lower() in {"nextfind","nf","netdisk"} else str(p or "auto").lower())(params.get("prefer")),
+        skip_nextfind=b("skip_nextfind"),
+        nextfind_only=b("nextfind_only"),
         force_pt=b("force_pt"),
         sites=params.get("sites"),
         resolution=params.get("resolution"),
@@ -78,7 +78,7 @@ def params_to_args(params: dict[str, Any]) -> SimpleNamespace:
         dry_run=dry,
         wait=int(params.get("wait") or 0),
         subscribe=b("subscribe"),
-        hdhive_timeout=float(params.get("hdhive_timeout") or 90),
+        nextfind_timeout=float(params.get("nextfind_timeout") or 90),
     )
 
 
@@ -111,25 +111,28 @@ def run_watch_pipeline(args: Any) -> tuple[int, dict[str, Any]]:
         },
     }
 
-    hdhive_result = None
-    hdhive_timeout = float(getattr(args, "hdhive_timeout", 90) or 90)
-    if args.prefer in {"hdhive", "auto", "nextfind", "nf"} and not args.skip_hdhive:
-        hdhive_result = try_hdhive(media, args.season, args.episode, timeout=hdhive_timeout)
-        report["hdhive"] = hdhive_result
-        if args.hdhive_only:
+    nextfind_result = None
+    nextfind_timeout = float(getattr(args, "nextfind_timeout", 90) or 90)
+    prefer = str(getattr(args, "prefer", "auto") or "auto").lower()
+    if prefer in {"nextfind", "nf", "netdisk"}:
+        prefer = "nextfind"
+    if prefer in {"auto", "nextfind"} and not getattr(args, "skip_nextfind", False):
+        nextfind_result = try_nextfind(media, args.season, args.episode, timeout=nextfind_timeout)
+        report["nextfind"] = nextfind_result
+        if getattr(args, "nextfind_only", False):
             report["stages"] = stages_snapshot()
-            _code = 0 if hdhive_result and hdhive_result.get("success") else 1
+            _code = 0 if nextfind_result and nextfind_result.get("success") else 1
             return _code, report
 
-        # Full netdisk success (NextFind transfer or legacy unlock+transfer) can short-circuit PT.
+        # Full netdisk success can short-circuit PT.
         if (
-            hdhive_result
-            and hdhive_result.get("success")
+            nextfind_result
+            and nextfind_result.get("success")
             and not args.force_pt
             and not args.dry_run
         ):
             report["success"] = True
-            report["source"] = hdhive_result.get("source") or hdhive_result.get("path") or "nextfind_openapi"
+            report["source"] = nextfind_result.get("source") or nextfind_result.get("path") or "nextfind_openapi"
             report["note"] = f"Netdisk grab succeeded ({report['source']}); skipped PT."
             try:
                 report["status"] = status_snapshot(media, args.episode)
@@ -138,10 +141,10 @@ def run_watch_pipeline(args: Any) -> tuple[int, dict[str, Any]]:
             report["stages"] = stages_snapshot()
             return 0, report
 
-        if hdhive_result and not hdhive_result.get("success"):
+        if nextfind_result and not nextfind_result.get("success"):
             report["note"] = (
                 "Netdisk grab failed ("
-                + str((hdhive_result.get("result") or {}).get("error") or hdhive_result.get("error") or "unknown")
+                + str((nextfind_result.get("result") or {}).get("error") or nextfind_result.get("error") or "unknown")
                 + "); continuing PT."
             )
 

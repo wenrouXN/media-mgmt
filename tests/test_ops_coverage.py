@@ -18,12 +18,6 @@ def test_moviepilot_paths_op():
     assert result.get("success") is True or "data" in result or isinstance(result, dict)
 
 
-def test_hdhive_search_requires_query():
-    result = call_op("hdhive", "search", {})
-    assert result.get("success") is False
-    assert "need" in result
-
-
 def test_nextfind_search_requires_query():
     result = call_op("nextfind", "search", {})
     assert result.get("success") is False

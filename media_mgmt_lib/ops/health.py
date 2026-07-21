@@ -151,7 +151,7 @@ def check_service(svc: Service, root_config: dict[str, Any] | None = None) -> di
         }
 
     if htype == "op":
-        # Delegate to registered service health op (e.g. nextfind / hdhive alias).
+        # Delegate to registered service health op (e.g. nextfind).
         try:
             import media_mgmt_lib.ops.bootstrap  # noqa: F401
             from media_mgmt_lib.ops import call_op
@@ -177,7 +177,7 @@ def check_service(svc: Service, root_config: dict[str, Any] | None = None) -> di
                 "missing_config": missing,
             }
 
-    # cloak_profile retired with Cloak HDHive; keep unknown for other types
+    # cloak_profile retired with Cloak netdisk; keep unknown for other types
     return {**base, "success": False, "status": "unknown_health_type", "health_type": htype}
 
 

@@ -305,7 +305,6 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         "updates": w_updates.run,
         "subscribe": w_subscribe.run,
         "nextfind": w_nextfind.run,
-        "hdhive": w_nextfind.run,
     }
     fn = runners.get(continue_to)
     if not fn:

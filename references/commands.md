@@ -1,7 +1,7 @@
 # media-mgmt 命令手册
 
 skill root 执行；主机 `python3`（无 per-skill venv）。  
-路由与读结果纪律 → `SKILL.md`（§0 + 决策表）。固定剧本 → `workflows.md`。网盘判据 → `hdhive-115.md`。短链 → `link-intents.md`。
+路由与读结果纪律 → `SKILL.md`（§0 + 决策表）。固定剧本 → `workflows.md`。网盘判据 → `nextfind-115.md`；装机 → `INSTALL.md`。短链 → `link-intents.md`。
 
 **准度清单**：带齐 `title`/`tmdbid`/`episode`/`media_type`；诊断加 `dry_run=true`；缺集只先 `run updates`；禁止 mp_api 发明参数。  
 **结果必读**：`warnings` / `state` / `authority` / `resource_authority` / `error`（勿只看 success）。
@@ -23,7 +23,7 @@ python3 scripts/media_ctl.py run watch --param title=金特务 --param episode=5
 python3 scripts/media_ctl.py run updates --param title=金特务：本色回归 --param tmdbid=296206
 python3 scripts/media_ctl.py run library --param title=金特务：本色回归
 python3 scripts/media_ctl.py run duplicates --param title=金特务：本色回归 --param tmdbid=296206
-python3 scripts/media_ctl.py run hdhive --param tmdbid=849869 --param title=格杀福顺 --param media_type=movie --param transfer=true
+python3 scripts/media_ctl.py run nextfind --param tmdbid=849869 --param title=格杀福顺 --param media_type=movie --param transfer=true
 python3 scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=明文'
 python3 scripts/media_ctl.py run cancel --param title=金特务 --param episode=6 --param dry_run=true
 python3 scripts/media_ctl.py run subscribe --param title=金特务 --param action=check
@@ -106,15 +106,15 @@ python3 scripts/media_ctl.py run doctor
 # 仅补缺（不订）：
 python3 -c "from media_mgmt_lib.workflows.nf_fill import fill_missing; print(fill_missing({'title':'关键词','media_type':'movie','dry_run':True}))"
 python3 scripts/media_ctl.py run nextfind --param q=关键词 --param media_type=movie --param dry_run=true
-python3 scripts/media_ctl.py run hdhive --param q=关键词 --param dry_run=true   # 别名，默认 NextFind
+python3 scripts/media_ctl.py run nextfind --param q=关键词 --param dry_run=true
 python3 scripts/media_ctl.py call nextfind grab --param q=关键词 --param dry_run=true
 ```
 
 已有明文 115 分享：`run share115`（P115 插件直转，不经 Cloak）。  
 **转存 API**：NextFind `POST /transfer`（`call nextfind transfer --param slug=...`）或一键 `grab`。  
-成功/失败表 → `hdhive-115.md`。凭据 → `credentials.md`（nextfind.env）。
+成功/失败表 → `nextfind-115.md`。凭据 → `credentials.md`（nextfind.env）。
 
-盘搜（pansou）与 Cloak HDHive 路线已退役；网盘找源统一 NextFind。
+网盘找源统一 NextFind OpenAPI（见 `nextfind-115.md` / `INSTALL.md`）。
 
 ## 音乐
 
@@ -144,7 +144,5 @@ python3 scripts/hongguo.py download 'https://novelquickapp.com/s/xxx' --episode 
 
 ## 环境坑（速查）
 
-- HDHive 挡大陆 IP → Cloak profile + 代理；CDP 必须 `type=page` 非 service_worker
-- HDHive TMDB：电影 `movie_tmdb_id` / 剧 `tv_tmdb_id`
 - P115 与 MP 事件链不兼容 → 日志 `TransferRenameBuild`；先修插件
 - identify 空 shell（title/type/tmdb 全 null）= 失败

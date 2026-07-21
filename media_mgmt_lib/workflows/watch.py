@@ -1,92 +1,60 @@
+"""Watch workflow: call pure pipeline (no subprocess)."""
 from __future__ import annotations
-import subprocess
-import sys
-import json
-from pathlib import Path
-from typing import Any
-from media_mgmt_lib.workflows._util import fail, need_any
 
-ROOT = Path(__file__).resolve().parents[2]
+from typing import Any
+
+from media_mgmt_lib.workflows._util import fail, need_any
+from media_mgmt_lib.watch_run import params_to_args, run_watch_pipeline
+
 
 def run(params: dict[str, Any]) -> dict[str, Any]:
     miss = need_any(params, ["title", "tmdbid"])
-    # title preferred
     title = params.get("title")
     if not title and not params.get("tmdbid"):
         return fail("missing_param", need="title")
-    cmd = [sys.executable, str(ROOT / "scripts" / "watch.py")]
-    if title:
-        cmd.append(str(title))
-    for key, flag in (
-        ("tmdbid", "--tmdbid"),
-        ("media_type", "--media-type"),
-        ("year", "--year"),
-        ("season", "--season"),
-        ("episode", "--episode"),
-        ("prefer", "--prefer"),
-        ("downloader", "--downloader"),
-        ("save_path", "--save-path"),
-        ("resolution", "--resolution"),
-        ("pick_index", "--pick-index"),
-        ("wait", "--wait"),
-        ("hdr_mode", "--hdr-mode"),
-        ("site_priority", "--site-priority"),
-        ("hdhive_timeout", "--hdhive-timeout"),
-        ("max_age_days", "--max-age-days"),
-    ):
-        if params.get(key) not in (None, ""):
-            cmd += [flag, str(params[key])]
-    if str(params.get("require_chinese") or params.get("chinese") or "").lower() in {
-        "1",
-        "true",
-        "yes",
-        "中文",
-    }:
-        cmd.append("--require-chinese")
-    if str(params.get("no_require_chinese") or "").lower() in {"1", "true", "yes"}:
-        cmd.append("--no-require-chinese")
-    if str(params.get("allow_disc") or "").lower() in {"1", "true", "yes"}:
-        cmd.append("--allow-disc")
-    if str(params.get("no_fx_sub") or "").lower() in {"1", "true", "yes"}:
-        cmd.append("--no-fx-sub")
-    if str(params.get("yes", "true")).lower() in {"1", "true", "yes"} and not params.get("dry_run"):
-        cmd.append("--yes")
-    if params.get("dry_run") in (True, "true", "1", "yes"):
-        cmd.append("--dry-run")
-    if params.get("skip_hdhive") in (True, "true", "1", "yes"):
-        cmd.append("--skip-hdhive")
-    if params.get("subscribe") in (True, "true", "1", "yes"):
-        cmd.append("--subscribe")
-    if params.get("hdhive_only") in (True, "true", "1", "yes"):
-        cmd.append("--hdhive-only")
-    if params.get("ignore_freshness") in (True, "true", "1", "yes"):
-        cmd.append("--ignore-freshness")
-    if params.get("force") in (True, "true", "1", "yes"):
-        cmd.append("--force")
-    # Default 420s: identify+hdhive(90)+pt searches should finish; override with timeout=
-    proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=float(params.get("timeout") or 420))
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
-    parsed = None
-    if out:
+
+    try:
+        args = params_to_args(params)
+    except ValueError as e:
+        return fail("invalid_param", detail=str(e))
+
+    if not args.title and not args.tmdbid:
+        return fail("missing_param", need="title|tmdbid")
+
+    try:
+        code, report = run_watch_pipeline(args)
+    except SystemExit as e:
+        # identify_media may raise SystemExit with JSON
+        msg = str(e)
         try:
-            parsed = json.loads(out)
-        except json.JSONDecodeError:
-            # last json object
-            for i in range(len(out) - 1, -1, -1):
-                if out[i] == "{":
-                    try:
-                        parsed = json.loads(out[i:])
-                        break
-                    except json.JSONDecodeError:
-                        continue
-    success = proc.returncode == 0 and (not isinstance(parsed, dict) or parsed.get("success") is not False)
-    return {
+            import json
+
+            payload = json.loads(msg)
+            if isinstance(payload, dict):
+                return {
+                    "success": False,
+                    "workflow": "watch",
+                    "returncode": 1,
+                    "result": payload,
+                    "error": payload.get("error") or "watch_failed",
+                }
+        except Exception:  # noqa: BLE001
+            pass
+        return fail("watch_aborted", detail=msg[:500])
+    except Exception as e:  # noqa: BLE001
+        return fail("watch_exception", detail=str(e)[:500])
+
+    success = code == 0 and (not isinstance(report, dict) or report.get("success") is not False)
+    out: dict[str, Any] = {
         "success": success,
         "workflow": "watch",
-        "returncode": proc.returncode,
-        "result": parsed,
-        "raw": None if parsed else out[:3000],
-        "stderr": err[:800] if err else None,
-        "cmd": cmd[2:],
+        "returncode": code,
+        "result": report,
+        "error": (report or {}).get("error") if isinstance(report, dict) else None,
+        "stages": (report or {}).get("stages") if isinstance(report, dict) else None,
     }
+    if isinstance(report, dict):
+        for k in ("warnings", "lock", "selected", "source", "download", "hdhive", "note"):
+            if k in report:
+                out[k] = report[k]
+    return out

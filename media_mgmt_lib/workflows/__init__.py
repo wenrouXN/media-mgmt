@@ -19,17 +19,22 @@ from media_mgmt_lib.workflows import schedule as w_schedule
 from media_mgmt_lib.workflows import catchup as w_catchup
 from media_mgmt_lib.workflows import duplicates as w_duplicates
 from media_mgmt_lib.workflows import hdhive as w_hdhive
+from media_mgmt_lib.workflows import nextfind as w_nextfind
 from media_mgmt_lib.workflows import retry as w_retry
 from media_mgmt_lib.workflows import upgrade as w_upgrade
 from media_mgmt_lib.workflows import cancel as w_cancel
-from media_mgmt_lib.workflows import offline as w_offline
+
+try:
+    from media_mgmt_lib.workflows import offline as w_offline
+except Exception:  # noqa: BLE001
+    w_offline = None  # type: ignore
 
 WorkflowFn = Callable[[dict[str, Any]], dict[str, Any]]
 
 REGISTRY: dict[str, dict[str, Any]] = {
     "identify": {
         "fn": w_identify.run,
-        "summary": "先认片：title→tmdb_id（可多候选确认；默认识别后停下）",
+        "summary": "先认片：title→tmdb_id（NextFind 优先，MP 回落；可多候选确认）",
         "need": ["title|tmdbid"],
         "fixed": True,
     },
@@ -81,12 +86,6 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "need": ["title|tmdbid"],
         "fixed": True,
     },
-    "subscribe": {
-        "fn": w_subscribe.run,
-        "summary": "查询/创建订阅；搜不到时可建议订阅",
-        "need": ["title|tmdbid"],
-        "fixed": True,
-    },
     "library": {
         "fn": w_library.run,
         "summary": "媒体库有没有这部/这集",
@@ -107,7 +106,7 @@ REGISTRY: dict[str, dict[str, Any]] = {
     },
     "catchup": {
         "fn": w_catchup.run,
-        "summary": "追更计划：已播缺集先下，未播订阅（execute=true 才执行）",
+        "summary": "追更：已播缺集先 NF 补缺（网盘→PT），未播双写订阅",
         "need": ["title|tmdbid"],
         "fixed": True,
     },
@@ -119,8 +118,20 @@ REGISTRY: dict[str, dict[str, Any]] = {
     },
     "hdhive": {
         "fn": w_hdhive.run,
-        "summary": "HDHive 搜→解锁→可选转存",
+        "summary": "网盘源抓取：NextFind OpenAPI 别名",
         "need": ["q|title"],
+        "fixed": True,
+    },
+    "nextfind": {
+        "fn": w_nextfind.run,
+        "summary": "NextFind OpenAPI：认片/资源/转存/订阅（主路径）",
+        "need": ["q|title|tmdbid"],
+        "fixed": True,
+    },
+    "subscribe": {
+        "fn": w_subscribe.run,
+        "summary": "订阅：NF+MP 双写；create 默认可 NF 补缺 dry",
+        "need": ["title|tmdbid"],
         "fixed": True,
     },
     "retry": {
@@ -141,13 +152,15 @@ REGISTRY: dict[str, dict[str, Any]] = {
         "need": ["hash|title|tmdbid"],
         "fixed": True,
     },
-    "offline": {
+}
+
+if w_offline is not None:
+    REGISTRY["offline"] = {
         "fn": w_offline.run,
         "summary": "磁力/链接 → CloudDrive 网盘离线下载（AddOfflineFiles）",
         "need": ["magnet|url"],
         "fixed": True,
-    },
-}
+    }
 
 
 def list_workflows() -> list[dict[str, Any]]:

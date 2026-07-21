@@ -192,8 +192,8 @@ def op_paths(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[
 
 
 def op_transfer_share(svc: Service, cfg: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
-    """115 share transfer via P115StrmHelper plugin."""
-    from media_mgmt_lib.providers.hdhive.grab import transfer_share_to_moviepilot
+    """115 share transfer via P115StrmHelper plugin (plaintext share only)."""
+    from media_mgmt_lib.transfer_share import transfer_share_to_moviepilot
 
     share_url = params.get("share_url") or params.get("url")
     password = params.get("password") or params.get("receive_code")
@@ -208,10 +208,10 @@ def op_transfer_share(svc: Service, cfg: dict[str, Any], params: dict[str, Any])
             "success": False,
             "error": "masked_or_invalid_share_password",
             "share_url": text,
-            "hint": "Refuse transfer when password is masked as ***; re-unlock HDHive resource for plaintext password",
+            "hint": "Refuse transfer when password is masked as ***; provide plaintext password",
         }
     try:
-        result = transfer_share_to_moviepilot(text)
+        result = transfer_share_to_moviepilot(text, cfg)
         msg = str(result.get("msg") or "")
         ok = result.get("code") == 0 or "已经转存" in msg or "已存在" in msg
         return {

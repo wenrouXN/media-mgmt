@@ -1,7 +1,7 @@
 """Cancel / recall a wrong download from the active queue."""
-
 from __future__ import annotations
 
+import argparse
 from typing import Any
 
 from media_mgmt_lib.workflows._util import fail, ok
@@ -17,47 +17,46 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
       downloader: optional fallback name
     """
     if not any(params.get(k) not in (None, "") for k in ("hash", "title", "tmdbid")):
-        return fail("missing_param", need="hash|title|tmdbid", hint="先 run status / call moviepilot active 找到任务")
+        return fail(
+            "missing_param",
+            need="hash|title|tmdbid",
+            hint="先 run status / call moviepilot active 找到任务",
+        )
 
-    # Prefer mp_api cancel path via direct script for full filter support.
-    from pathlib import Path
-    import json
-    import subprocess
-    import sys
+    import scripts.mp_api as mp_api
 
-    root = Path(__file__).resolve().parents[2]
-    cmd = [sys.executable, str(root / "scripts" / "mp_api.py"), "cancel"]
-    for key, flag in (
-        ("hash", "--hash"),
-        ("title", "--title"),
-        ("tmdbid", "--tmdbid"),
-        ("episode", "--episode"),
-        ("downloader", "--downloader"),
-    ):
-        if params.get(key) not in (None, ""):
-            cmd += [flag, str(params[key])]
-    if str(params.get("delete_files") or "").lower() in {"1", "true", "yes"}:
-        cmd.append("--delete-files")
-    if str(params.get("dry_run") or "").lower() in {"1", "true", "yes"}:
-        cmd.append("--dry-run")
+    def b(key: str) -> bool:
+        return str(params.get(key) or "").lower() in {"1", "true", "yes", "on"}
 
-    proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, timeout=60)
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
-    parsed: Any = None
-    if out:
-        try:
-            parsed = json.loads(out)
-        except json.JSONDecodeError:
-            parsed = None
-    success = proc.returncode == 0 and isinstance(parsed, dict) and parsed.get("success") is True
+    args = argparse.Namespace(
+        hash=params.get("hash"),
+        title=params.get("title"),
+        tmdbid=int(params["tmdbid"]) if params.get("tmdbid") not in (None, "") else None,
+        episode=int(params["episode"]) if params.get("episode") not in (None, "") else None,
+        downloader=params.get("downloader"),
+        delete_files=b("delete_files"),
+        dry_run=b("dry_run"),
+    )
+
+    captured: list[Any] = []
+
+    def capture(data: Any) -> None:
+        captured.append(data)
+
+    # mp_api.cmd_cancel uses print_json — temporarily patch
+    orig = mp_api.print_json
+    mp_api.print_json = capture  # type: ignore[assignment]
+    try:
+        mp_api.cmd_cancel(args)
+    finally:
+        mp_api.print_json = orig
+
+    parsed = captured[-1] if captured else None
+    success = isinstance(parsed, dict) and parsed.get("success") is True
     payload = {
         "workflow": "cancel",
         "success": success,
         "result": parsed,
-        "raw": None if parsed else out[:2000],
-        "stderr": err[:500] if err else None,
-        "cmd": cmd[2:],
         "hint": (
             "已取消下载任务。若文件已开始落盘且需要删文件，加 delete_files=true。"
             if success

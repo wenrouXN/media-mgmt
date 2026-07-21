@@ -1,0 +1,51 @@
+{
+  "id": "nextfind",
+  "name": "NextFind",
+  "kind": "resource_orchestrator",
+  "description": "NextFind Agent OpenAPI full surface: search/resources/unlock/transfer/subscribe/library/settings/history",
+  "config_section": "nextfind",
+  "required_config": [
+    "base_url",
+    "api_key"
+  ],
+  "ops": [
+    "health",
+    "search",
+    "resources",
+    "preview",
+    "unlock",
+    "quota",
+    "transfer",
+    "directories",
+    "create_directory",
+    "local_library_filter",
+    "logs",
+    "history",
+    "history_delete_all",
+    "history_delete_item",
+    "fill_missing",
+    "delete_episode",
+    "delete_season",
+    "delete_movie",
+    "settings_tg_channels",
+    "settings_rss",
+    "settings_rules",
+    "settings_transfer_folder",
+    "ignore_season",
+    "subscriptions",
+    "subscribe_add",
+    "subscribe_remove",
+    "subscribe_info",
+    "library_info",
+    "identify",
+    "grab"
+  ],
+  "health": {
+    "type": "op",
+    "op": "health"
+  },
+  "endpoints": {
+    "base_from": "config.base_url",
+    "prefix": "/api/openapi"
+  }
+}

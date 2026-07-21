@@ -604,3 +604,86 @@ def summarize_candidate(item: dict[str, Any]) -> dict[str, Any]:
         "date_elapsed": ti.get("date_elapsed"),
         "pubdate_age_days": round(age, 2) if age is not None else None,
     }
+
+
+def _norm_site(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+# Common PT display aliases (user speech / UI name → match against site_name)
+_SITE_ALIASES: dict[str, tuple[str, ...]] = {
+    "彩虹岛": ("彩虹岛", "chdbits", "chd", "ptchdbits"),
+    "chdbits": ("彩虹岛", "chdbits", "chd", "ptchdbits"),
+    "chd": ("彩虹岛", "chdbits", "chd", "ptchdbits"),
+    "天空": ("天空", "hdsky", "sky"),
+    "hdsky": ("天空", "hdsky", "sky"),
+    "憨憨": ("憨憨", "hhan", "hhanclub"),
+    "hhan": ("憨憨", "hhan", "hhanclub"),
+    "观众": ("观众", "audiences", "audionces"),
+    "audiences": ("观众", "audiences"),
+}
+
+
+def site_matches(site_name: Any, wanted: str) -> bool:
+    """True if torrent site_name matches user lock (alias-aware, case-insensitive)."""
+    s = _norm_site(site_name)
+    w = _norm_site(wanted)
+    if not w:
+        return True
+    if not s:
+        return False
+    if w in s or s in w:
+        return True
+    aliases = _SITE_ALIASES.get(w) or _SITE_ALIASES.get(wanted.strip()) or ()
+    for a in aliases:
+        an = _norm_site(a)
+        if an and (an in s or s in an):
+            return True
+    return False
+
+
+def filter_items_by_lock(
+    items: list[dict[str, Any]],
+    *,
+    site_name: str | None = None,
+    title_contains: str | None = None,
+    page_url: str | None = None,
+) -> list[dict[str, Any]]:
+    """Hard-filter search results before ranking (site / title substring / page url)."""
+    if not items:
+        return []
+    site = (site_name or "").strip() or None
+    needle = (title_contains or "").strip() or None
+    url = (page_url or "").strip() or None
+    if not site and not needle and not url:
+        return list(items)
+
+    out: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        ti = _as_torrent_info(it)
+        blob = _text_blob(it, ti)
+        if site and not site_matches(ti.get("site_name"), site):
+            continue
+        if needle and needle.lower() not in blob.lower():
+            continue
+        if url:
+            page = str(ti.get("page_url") or it.get("page_url") or "")
+            if url not in page:
+                continue
+        out.append(it)
+    return out
+
+
+def lock_active(
+    *,
+    site_name: str | None = None,
+    title_contains: str | None = None,
+    page_url: str | None = None,
+) -> bool:
+    return bool(
+        (site_name or "").strip()
+        or (title_contains or "").strip()
+        or (page_url or "").strip()
+    )

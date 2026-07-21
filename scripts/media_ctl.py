@@ -18,10 +18,13 @@ import media_mgmt_lib.ops.bootstrap  # noqa: F401
 from media_mgmt_lib.catalog import catalog_summary, load_service
 from media_mgmt_lib.ops import call_op, list_ops
 from media_mgmt_lib.ops.health import check_all, check_service
+from media_mgmt_lib.result_gate import decorate_agent_result
 from media_mgmt_lib.workflows import list_workflows, run_workflow
 
 
 def print_json(data: Any) -> None:
+    if isinstance(data, dict):
+        data = decorate_agent_result(data)
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 

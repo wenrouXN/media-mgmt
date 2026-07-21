@@ -35,6 +35,9 @@ SECRET_MAP: dict[str, dict[str, list[str]]] = {
             "SESSION_STRING",
         ],
     },
+    "nextfind": {
+        "api_key": ["NEXTFIND_API_KEY", "NEXTFIND_OPENAPI_KEY", "OPENAPI_KEY", "API_KEY"],
+    },
 }
 
 # optional non-secret overlays (only fill when config empty)
@@ -50,6 +53,9 @@ OPTIONAL_MAP: dict[str, dict[str, list[str]]] = {
             "DEFAULT_FOLDER",
         ],
     },
+    "nextfind": {
+        "base_url": ["NEXTFIND_BASE_URL", "NEXTFIND_URL", "BASE_URL", "URL"],
+    },
 }
 
 # preferred credential filenames per section
@@ -57,6 +63,7 @@ SECTION_FILES: dict[str, list[str]] = {
     "moviepilot": ["moviepilot.env", "moviepilot.txt", "p115strm.txt"],
     "clouddrive": ["clouddrive.env", "clouddrive.txt"],
     "telegram_music": ["telegram_music.env", "telegram_music.txt", "telegram.env"],
+    "nextfind": ["nextfind.env", "nextfind.txt"],
 }
 
 

@@ -18,20 +18,19 @@ def test_moviepilot_paths_op():
     assert result.get("success") is True or "data" in result or isinstance(result, dict)
 
 
-def test_pansou_search_requires_query():
-    result = call_op("pansou", "search", {})
-    assert result.get("success") is False
-    assert result.get("need") == "q"
-
-
 def test_hdhive_search_requires_query():
     result = call_op("hdhive", "search", {})
     assert result.get("success") is False
     assert "need" in result
 
 
-def test_cloakbrowser_list_profiles():
-    result = call_op("cloakbrowser", "list_profiles", {})
-    assert result.get("service") == "cloakbrowser"
-    # should work in this environment
-    assert result.get("success") is True
+def test_nextfind_search_requires_query():
+    result = call_op("nextfind", "search", {})
+    assert result.get("success") is False
+    assert "need" in result or result.get("error")
+
+
+def test_pansou_and_cloak_removed_from_catalog():
+    ids = {svc.id for svc in load_catalog()}
+    assert "pansou" not in ids
+    assert "cloakbrowser" not in ids

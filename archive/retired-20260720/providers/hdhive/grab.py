@@ -28,37 +28,10 @@ def _is_usable_115_share(share_url: str) -> bool:
 
 
 def transfer_share_to_moviepilot(share_url: str) -> dict:
-    """Transfer a plaintext 115 share URL via P115StrmHelper.
+    """Back-compat re-export; implementation lives in media_mgmt_lib.transfer_share."""
+    from media_mgmt_lib.transfer_share import transfer_share_to_moviepilot as _transfer
 
-    Refuses masked passwords (password=***) which always become 访问码错误.
-    """
-    creds = moviepilot_credentials(CONFIG)
-    if not creds.get("BASE_URL") or not creds.get("API_KEY"):
-        raise RuntimeError("Missing moviepilot.base_url or moviepilot.api_key in config")
-    if not _is_usable_115_share(share_url):
-        return {
-            "code": -1,
-            "msg": "masked_or_invalid_share_password",
-            "data": None,
-            "share_url": share_url,
-            "hint": "Need plaintext ?password=xxx; password=*** cannot be transferred",
-        }
-    # Normalize 115cdn.com -> 115.com for plugin parsers that only match one host.
-    normalized = share_url.replace("https://115cdn.com/", "https://115.com/").replace(
-        "http://115cdn.com/", "http://115.com/"
-    )
-    query = urllib.parse.urlencode({"apikey": creds["API_KEY"], "share_url": normalized})
-    req = urllib.request.Request(
-        f"{creds['BASE_URL'].rstrip('/')}/api/v1/plugin/P115StrmHelper/add_transfer_share?{query}"
-    )
-    try:
-        payload = json.loads(urllib.request.urlopen(req, timeout=60).read())
-    except Exception as e:  # noqa: BLE001
-        return {"code": -1, "msg": str(e), "data": None, "error": str(e)}
-    if not isinstance(payload, dict):
-        return {"code": -1, "msg": "invalid_plugin_response", "data": payload}
-    # Keep original response shape; callers must check code==0.
-    return payload
+    return _transfer(share_url, CONFIG)
 
 
 def pick_best_resource(
@@ -68,28 +41,15 @@ def pick_best_resource(
     require_chinese: bool = False,
     hdr_mode: str = "any",
 ) -> dict | None:
-    """Pick HDHive resource; prefers quality prefs when provided."""
-    from media_mgmt_lib.quality_pref import quality_score, blob_of
+    """Pick HDHive resource via shared quality_pref ranker."""
+    from media_mgmt_lib.quality_pref import pick_best_resource as _pick
 
-    def score(resource: dict):
-        tags = resource.get("tags", "")
-        desc = resource.get("desc", "")
-        res = resource.get("resolution") or ""
-        cost = resource.get("cost", "")
-        text = blob_of(desc, res, tags)
-        q = quality_score(
-            text,
-            resolution=resolution or "1080p",
-            require_chinese=require_chinese,
-            hdr_mode=hdr_mode,
-        )
-        is_official = 1 if "官组" in tags else 0
-        is_free = 1 if ("免费" in tags or cost == "" or cost == "免费") else 0
-        is_bad = 1 if "疑似失效" in tags else 0
-        hard = 1 if q.get("matches_hard") else 0
-        return (hard, -is_bad, int(q.get("score") or 0), is_official, is_free)
-
-    return max(resources, key=score) if resources else None
+    return _pick(
+        resources,
+        resolution=resolution,
+        require_chinese=require_chinese,
+        hdr_mode=hdr_mode or "any",
+    )
 
 
 async def get_first_cdp_ws_url() -> str:

@@ -4,4 +4,5 @@ websockets
 httpx
 pytest
 grpcio>=1.60
-protobuf>=4.25
+# clouddrive generated stubs require protobuf runtime >= gencode (7.35.x)
+protobuf>=7.35.1

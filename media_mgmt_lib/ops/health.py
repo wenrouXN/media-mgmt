@@ -42,8 +42,6 @@ def _resolve_url(svc: Service, conf: dict[str, Any], health: dict[str, Any]) -> 
         base = str(conf["url"]).rstrip("/")
     elif health.get("url_from") == "config.api_base_url" and conf.get("api_base_url"):
         base = str(conf["api_base_url"]).rstrip("/")
-    elif health.get("url_from") == "config.cloak_url" and conf.get("cloak_url"):
-        base = str(conf["cloak_url"]).rstrip("/")
     elif conf.get("base_url"):
         base = str(conf["base_url"]).rstrip("/")
     else:
@@ -152,31 +150,34 @@ def check_service(svc: Service, root_config: dict[str, Any] | None = None) -> di
             "http_status": code,
         }
 
-    if htype == "cloak_profile":
-        cloak = str(conf.get(svc.health.get("url_key") or "cloak_url") or "").rstrip("/")
-        pid = conf.get(svc.health.get("profile_id_key") or "profile_id")
-        if not cloak:
-            return {**base, "success": False, "status": "misconfigured", "missing_config": missing or ["cloak_url"]}
-        # manager up?
-        code, raw, parsed = _http_get(cloak + "/api/profiles")
-        manager_ok = code == 200
-        profile_ok = None
-        profile_status = None
-        if manager_ok and pid:
-            c2, r2, p2 = _http_get(f"{cloak}/api/profiles/{pid}/status")
-            profile_ok = c2 == 200
-            profile_status = p2 if isinstance(p2, dict) else r2[:200]
-        ok = manager_ok and (profile_ok is not False)
-        return {
-            **base,
-            "success": ok,
-            "status": "ok" if ok else "down",
-            "manager_http_status": code,
-            "profile_id": pid or None,
-            "profile_status": profile_status,
-            "missing_config": missing,
-        }
+    if htype == "op":
+        # Delegate to registered service health op (e.g. nextfind / hdhive alias).
+        try:
+            import media_mgmt_lib.ops.bootstrap  # noqa: F401
+            from media_mgmt_lib.ops import call_op
 
+            op_name = str(svc.health.get("op") or "health")
+            result = call_op(svc.id, op_name, {})
+            if not isinstance(result, dict):
+                return {**base, "success": False, "status": "down", "error": "bad_health_op_response"}
+            ok = bool(result.get("success"))
+            return {
+                **base,
+                "success": ok,
+                "status": "ok" if ok else (result.get("status") or "down"),
+                "detail": result,
+                "missing_config": missing,
+            }
+        except Exception as e:  # noqa: BLE001
+            return {
+                **base,
+                "success": False,
+                "status": "down",
+                "error": str(e),
+                "missing_config": missing,
+            }
+
+    # cloak_profile retired with Cloak HDHive; keep unknown for other types
     return {**base, "success": False, "status": "unknown_health_type", "health_type": htype}
 
 

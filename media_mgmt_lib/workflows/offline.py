@@ -6,7 +6,6 @@ from typing import Any
 import media_mgmt_lib.ops.bootstrap  # noqa: F401
 from media_mgmt_lib.config import load_json_config, section
 from media_mgmt_lib.ops import call_op
-from media_mgmt_lib.providers.clouddrive.client import resolve_save_path
 from media_mgmt_lib.workflows._util import fail, ok
 
 
@@ -30,7 +29,16 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         or ""
     )
     conf = section(load_json_config(), "clouddrive")
-    save_path = resolve_save_path(str(save_path_raw) if save_path_raw else None, conf)
+    try:
+        from media_mgmt_lib.providers.clouddrive.client import resolve_save_path
+
+        save_path = resolve_save_path(str(save_path_raw) if save_path_raw else None, conf)
+    except Exception as e:  # noqa: BLE001
+        return fail(
+            "clouddrive_unavailable",
+            detail=str(e),
+            hint="protobuf runtime older than clouddrive gencode; upgrade protobuf or regenerate stubs",
+        )
     title = params.get("title") or params.get("name") or ""
 
     op_params: dict[str, Any] = {"magnet": magnet, "save_path": save_path}

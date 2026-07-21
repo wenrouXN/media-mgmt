@@ -7,7 +7,7 @@
 
 不要用本路径：
 
-- 115 **分享转存** → `run hdhive` / `run share115`
+- 115 **分享转存 / 找源** → `run nextfind`（或别名 `run hdhive`）/ 已有链 `run share115`
 - 本机 PT 下载 → `run watch --prefer pt`
 
 ## 配置
@@ -91,11 +91,12 @@ python3 scripts/media_ctl.py call clouddrive list_offline \
 | `rpc_error` | 连不上 CloudDrive / 协议错误 |
 | `missing_param` | 缺 magnet 或路径 |
 
-## 与 HDHive 边界
+## 与网盘找源边界
 
 | 能力 | workflow |
 |------|----------|
-| HDHive 解锁 115 **分享** → 转存 | `hdhive` / `share115` |
+| NextFind 找源 + 转存 | `nextfind` / `hdhive`（别名） |
+| 已有 115 **分享** → 转存 | `share115` |
 | **磁力** → CloudDrive 离线 | `offline` |
 | PT 本机种 | `watch prefer=pt` |
 

@@ -145,28 +145,82 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         "skip_search_unreleased": True,
     }
 
-    actions: dict[str, Any] = {"downloaded": [], "subscribe": None}
+    actions: dict[str, Any] = {"downloaded": [], "subscribe": None, "nf_fill": []}
+    prefer = str(params.get("prefer") or "auto").lower()
     if execute:
-        # download aired missing first (bounded)
+        # CEO: NF fill first (netdisk → PT-from-NF → MP only if needed), unless prefer=pt
+        from media_mgmt_lib.workflows.nf_fill import fill_missing
+
         for item in download_candidates[:max_download]:
-            wr = w_watch.run(
+            if prefer in {"pt", "torrent"}:
+                wr = w_watch.run(
+                    {
+                        "title": title,
+                        "tmdbid": tmdbid,
+                        "season": season,
+                        "episode": item["episode"],
+                        "yes": True,
+                        "skip_hdhive": True,
+                        "prefer": "pt",
+                    }
+                )
+                actions["downloaded"].append(
+                    {
+                        "episode": item["episode"],
+                        "path": "pt",
+                        "success": bool(wr.get("success")),
+                        "result": wr,
+                    }
+                )
+                continue
+
+            fr = fill_missing(
                 {
                     "title": title,
                     "tmdbid": tmdbid,
+                    "media_type": media.get("type") or params.get("media_type") or "tv",
                     "season": season,
                     "episode": item["episode"],
-                    "yes": True,
-                    "skip_hdhive": params.get("skip_hdhive", True),
-                    "prefer": params.get("prefer") or "pt",
+                    "dry_run": False,
+                    "prefer": prefer,
+                    "force_mp_search": params.get("force_mp_search"),
+                    "resolution": params.get("resolution"),
+                    "require_chinese": params.get("require_chinese"),
+                    "hdr_mode": params.get("hdr_mode"),
                 }
             )
-            actions["downloaded"].append(
-                {
-                    "episode": item["episode"],
-                    "success": bool(wr.get("success")),
-                    "result": wr,
-                }
-            )
+            actions["nf_fill"].append({"episode": item["episode"], "result": fr})
+            if fr.get("success"):
+                actions["downloaded"].append(
+                    {
+                        "episode": item["episode"],
+                        "path": fr.get("path"),
+                        "success": True,
+                        "result": fr,
+                    }
+                )
+            else:
+                # last resort watch PT
+                wr = w_watch.run(
+                    {
+                        "title": title,
+                        "tmdbid": tmdbid,
+                        "season": season,
+                        "episode": item["episode"],
+                        "yes": True,
+                        "skip_hdhive": True,
+                        "prefer": "pt",
+                    }
+                )
+                actions["downloaded"].append(
+                    {
+                        "episode": item["episode"],
+                        "path": "pt_fallback",
+                        "success": bool(wr.get("success")),
+                        "result": wr,
+                        "nf_fill_error": fr.get("error"),
+                    }
+                )
         if subscribe_needed or str(params.get("subscribe") or "").lower() in {"1", "true", "yes"}:
             actions["subscribe"] = w_subscribe.run(
                 {
@@ -175,6 +229,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
                     "media_type": media.get("type") or "电视剧",
                     "season": season,
                     "action": "create",
+                    "fill": False,  # already filled above per-ep
                 }
             )
 

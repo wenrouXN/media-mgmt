@@ -284,3 +284,96 @@ def parse_quality_params(params: dict[str, Any]) -> dict[str, Any]:
         "require_chinese": require_chinese,
         "hdr_mode": hdr_mode if hdr_mode in {"any", "sdr", "hdr"} else "any",
     }
+
+
+def resource_blob(item: dict[str, Any]) -> str:
+    """Build a searchable text blob from HDHive DOM or NextFind OpenAPI resource rows."""
+    if not isinstance(item, dict):
+        return ""
+    parts: list[Any] = [
+        item.get("title"),
+        item.get("name"),
+        item.get("desc"),
+        item.get("remark"),
+        item.get("tags"),
+        item.get("resolution"),
+        item.get("size"),
+        item.get("share_size"),
+        item.get("cost"),
+        item.get("channel_name"),
+        item.get("source_type"),
+        item.get("pan_type"),
+        item.get("db_raw_text"),
+    ]
+    for key in ("video_resolution", "subtitle_language", "subtitle_type", "source"):
+        v = item.get(key)
+        if isinstance(v, list):
+            parts.extend(v)
+        elif v not in (None, ""):
+            parts.append(v)
+    return blob_of(*parts)
+
+
+def pick_best_resource(
+    resources: list[dict[str, Any]] | None,
+    *,
+    resolution: str | None = None,
+    require_chinese: bool = False,
+    hdr_mode: str = "any",
+    prefer_fx_sub: bool = True,
+    exclude_disc: bool = False,
+) -> dict[str, Any] | None:
+    """Shared ranker for netdisk resource rows (NextFind OpenAPI + legacy HDHive DOM).
+
+    Soft score from quality_score + resolution/chinese/unlock signals; hard prefer via matches_quality.
+    """
+    if not resources:
+        return None
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for it in resources:
+        if not isinstance(it, dict):
+            continue
+        text = resource_blob(it)
+        hard = matches_quality(
+            text,
+            resolution=resolution,
+            require_chinese=require_chinese,
+            hdr_mode=hdr_mode or "any",
+        )
+        qs = quality_score(
+            text,
+            resolution=resolution,
+            require_chinese=require_chinese,
+            hdr_mode=hdr_mode or "any",
+            prefer_fx_sub=prefer_fx_sub,
+            exclude_disc=exclude_disc,
+        )
+        score = int(qs.get("score") or 0)
+        score += int(qs.get("resolution_rank") or 0) * 5
+        if has_chinese(text):
+            score += 8
+        # NextFind unlock economics
+        if it.get("is_unlocked"):
+            score += 15
+        pts = it.get("unlock_points")
+        try:
+            if pts is not None:
+                score -= int(pts)
+        except (TypeError, ValueError):
+            pass
+        # Legacy HDHive DOM signals
+        tags = str(it.get("tags") or "")
+        cost = str(it.get("cost") or "")
+        if "官组" in tags:
+            score += 10
+        if "免费" in tags or cost in {"", "免费"}:
+            score += 6
+        if "疑似失效" in tags:
+            score -= 50
+        if not hard:
+            score -= 40
+        scored.append((score, it))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[0][1]

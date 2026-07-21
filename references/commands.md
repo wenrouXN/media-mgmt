@@ -1,9 +1,10 @@
 # media-mgmt 命令手册
 
 skill root 执行；主机 `python3`（无 per-skill venv）。  
-固定剧本策略 → `workflows.md`。网盘判据 → `hdhive-115.md`。短链意图 → `link-intents.md`。
+路由与读结果纪律 → `SKILL.md`（§0 + 决策表）。固定剧本 → `workflows.md`。网盘判据 → `hdhive-115.md`。短链 → `link-intents.md`。
 
-**准度清单**：带齐 `title`/`tmdbid`/`episode`/`media_type`；诊断加 `dry_run=true`；网盘 `transfer=true`；缺集只先 `run updates`；禁止 mp_api 发明参数。
+**准度清单**：带齐 `title`/`tmdbid`/`episode`/`media_type`；诊断加 `dry_run=true`；缺集只先 `run updates`；禁止 mp_api 发明参数。  
+**结果必读**：`warnings` / `state` / `authority` / `resource_authority` / `error`（勿只看 success）。
 
 ```bash
 python3 -m pip install --user --break-system-packages -r requirements.txt
@@ -73,29 +74,47 @@ python3 scripts/mp_api.py subscribe --name "片名" --media-type tv --tmdbid 299
 
 禁止：手搓残缺 torrent/media body；发明不存在的 CLI 参数。
 
-## HDHive / 115
+## 网盘 / NextFind / 115
 
-推荐走 workflow（`run hdhive` / `share115`）。底层：
-
-```bash
-python3 scripts/hdhive.py tmdb movie 849869
-python3 scripts/hdhive.py tmdb tv 299365
-python3 scripts/hdhive.py resources "https://hdhive.com/tmdb/movie/849869"
-python3 scripts/hdhive.py unlock "https://hdhive.com/resource/115/..."
-python3 scripts/hdhive_grab.py "关键词" --select 1
-```
-
-Unlock：确定解锁 → 确认 → 115 协议确定 → 取 `location.href` **明文**密码。  
-成功/失败表 → `hdhive-115.md`。
-
-## 盘搜
+**主路径 NextFind OpenAPI**（不要先 PT）：
 
 ```bash
-# 读 config.pansou.url 后 POST /api/search
-# body: {"kw":"<关键词>","cloud_types":["115"]}
-# result: data.merged_by_type["115"]
-python3 scripts/media_ctl.py call pansou search --param kw=关键词
+python3 scripts/media_ctl.py call nextfind health
+# 用户说「下第N个」→ pick_n 从 1 起（第一个=1），不要用 pick_index=1
+python3 scripts/media_ctl.py run watch --param title=片名 --param tmdbid=ID --param media_type=movie --param prefer=pt --param pick_n=1 --param force=true --param yes=true
+# 点了「彩虹岛那个」→ 硬锁站点（重搜不乱序）；可叠加 pick_n / title_contains / page_url
+python3 scripts/media_ctl.py run watch --param title=片名 --param tmdbid=ID --param prefer=pt --param site_name=彩虹岛 --param pick_n=1 --param force=true --param yes=true
+# python3 scripts/media_ctl.py run watch ... --param title_contains=ltzww@CHDBits
+# python3 scripts/media_ctl.py run watch ... --param page_url=details.php?id=332966
+# 默认路径：MP base + 分类（如 /qbs/torrents/movies/日韩电影/）；仅当用户明确要求时才 save_path 覆盖
+
+# 认片（title → tmdb）
+python3 scripts/media_ctl.py call nextfind identify --param q=关键词 --param media_type=movie
+python3 scripts/media_ctl.py run identify --param title=关键词 --param media_type=movie
+# 强制 MoviePilot 认片：--param force_mp=true
+# 订阅双写 + 补缺 dry
+python3 scripts/media_ctl.py run subscribe --param title=关键词 --param action=check
+python3 scripts/media_ctl.py run subscribe --param title=关键词 --param action=create --param dry_run=true
+# 真双写：去掉 dry_run；真补缺：--param fill_execute=true
+# 搜资源默认 NF（禁止默认 MP 二搜）
+python3 scripts/media_ctl.py run search --param title=关键词 --param media_type=movie
+python3 scripts/media_ctl.py run search --param title=关键词 --param force_mp_search=true
+# 升级：probe=nf_fill dry；execute 真转存/下载
+python3 scripts/media_ctl.py run upgrade --param title=关键词 --param media_type=movie --param probe=true
+# 体检（含 nextfind pipeline）
+python3 scripts/media_ctl.py run doctor
+# 仅补缺（不订）：
+python3 -c "from media_mgmt_lib.workflows.nf_fill import fill_missing; print(fill_missing({'title':'关键词','media_type':'movie','dry_run':True}))"
+python3 scripts/media_ctl.py run nextfind --param q=关键词 --param media_type=movie --param dry_run=true
+python3 scripts/media_ctl.py run hdhive --param q=关键词 --param dry_run=true   # 别名，默认 NextFind
+python3 scripts/media_ctl.py call nextfind grab --param q=关键词 --param dry_run=true
 ```
+
+已有明文 115 分享：`run share115`（P115 插件直转，不经 Cloak）。  
+**转存 API**：NextFind `POST /transfer`（`call nextfind transfer --param slug=...`）或一键 `grab`。  
+成功/失败表 → `hdhive-115.md`。凭据 → `credentials.md`（nextfind.env）。
+
+盘搜（pansou）与 Cloak HDHive 路线已退役；网盘找源统一 NextFind。
 
 ## 音乐
 

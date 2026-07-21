@@ -49,6 +49,23 @@ def test_choose_download_path_uses_moviepilot_category_config():
     assert resolved["source"] == "exact"
 
 
+def test_choose_download_path_appends_inferred_category_to_generic_base():
+    """When MP only has generic 电影 path, append 日韩电影/ from infer_category."""
+    media = {"type": "movie", "original_language": "ko", "origin_country": ["KR"]}
+    paths = [
+        {
+            "media_type": "电影",
+            "media_category": "",
+            "save_path": "/qbs/torrents/movies/",
+            "priority": 1,
+        },
+    ]
+    resolved = mp_api.choose_download_path(media, paths, None)
+    assert resolved["media_category"] == "日韩电影"
+    assert resolved["source"] == "generic_plus_category"
+    assert resolved["save_path"] == "/qbs/torrents/movies/日韩电影/"
+
+
 def test_cmd_download_fetches_category_config_for_path_resolution(monkeypatch, capsys):
     calls = []
 

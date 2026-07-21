@@ -1,32 +1,31 @@
-"""Upgrade library quality: prefer HDHive→115, then PT with quality filters."""
+"""Upgrade library quality: NF fill (netdisk→PT-from-NF) first, then PT watch."""
 from __future__ import annotations
 
 from typing import Any
 
 from media_mgmt_lib.quality_pref import parse_quality_params
-from media_mgmt_lib.workflows._util import fail, mp, ok
 from media_mgmt_lib.workflows import duplicates as w_duplicates
 from media_mgmt_lib.workflows import library as w_library
 from media_mgmt_lib.workflows import watch as w_watch
+from media_mgmt_lib.workflows._util import fail, mp, ok
 
 
 def run(params: dict[str, Any]) -> dict[str, Any]:
     """Re-acquire better quality version.
 
-    Default preference order (user policy):
-      1) HDHive → unlock 115 → MoviePilot transfer_share
-      2) PT torrent download with quality filters
+    Default preference order (CEO 2026-07-20):
+      1) nf_fill (NextFind resources once: netdisk grab, then PT rows from same result)
+      2) PT via watch with skip_hdhive (only if netdisk/NF path fails or prefer=pt)
 
     params:
       title | tmdbid
       episode / season
       resolution (default 2160p for upgrade intent)
       require_chinese / lang=zh
-      hdr_mode=sdr|hdr|any (default sdr for upgrade intent when user said 4k sdr)
-      prefer: hdhive|pt|auto (default hdhive)
-      execute / yes: actually download/transfer
-      dry_run: plan only
-      force: download even if needs_confirm
+      hdr_mode=sdr|hdr|any
+      prefer: hdhive|nextfind|pt|auto
+      execute / yes / dry_run / probe / force
+      force_mp_search: allow MP re-search inside fill when NF empty
     """
     title = params.get("title")
     tmdbid = params.get("tmdbid")
@@ -34,9 +33,7 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         return fail("missing_param", need="title|tmdbid")
 
     qpref = parse_quality_params(params)
-    # upgrade defaults: 4K + Chinese-friendly + SDR unless explicitly set
     if not qpref.get("resolution") and params.get("resolution") is None:
-        # only apply default when user didn't pass resolution key at all
         if "resolution" not in params and "prefer_resolution" not in params:
             qpref["resolution"] = "2160p"
     if "hdr_mode" not in params and "hdr" not in params:
@@ -47,17 +44,12 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
         and "lang" not in params
         and "language" not in params
     ):
-        # default require chinese for upgrade quality complaints
-        qpref["require_chinese"] = True if params.get("require_chinese") is None else qpref["require_chinese"]
+        qpref["require_chinese"] = True
         if params.get("no_chinese") in (True, "true", "1", "yes"):
             qpref["require_chinese"] = False
-        elif str(params.get("require_chinese", "true")).lower() not in {"false", "0", "no"}:
-            # if user said 没有中文 / 要中文, default true
-            if params.get("require_chinese") is None:
-                qpref["require_chinese"] = True
 
-    prefer = str(params.get("prefer") or "hdhive").lower()  # user: HDHive 115 first
-    if prefer in {"hidive", "hd"}:  # common typo for hdhive
+    prefer = str(params.get("prefer") or "hdhive").lower()
+    if prefer in {"hidive", "hd", "nextfind", "nf", "openapi", "netdisk"}:
         prefer = "hdhive"
     execute = str(params.get("execute") or params.get("yes") or "").lower() in {"1", "true", "yes"}
     dry_run = str(params.get("dry_run") or "").lower() in {"1", "true", "yes"}
@@ -66,23 +58,51 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     force = str(params.get("force") or "").lower() in {"1", "true", "yes"}
     season = params.get("season")
     episode = params.get("episode")
+    probe = str(params.get("probe") or "").lower() in {"1", "true", "yes"}
+    live = execute or probe
 
-    # identify
-    identified = mp(
-        "identify",
-        title=title,
-        tmdbid=tmdbid,
-        media_type=params.get("media_type") or params.get("mtype"),
-        year=params.get("year"),
-    )
-    media = identified.get("selected") if isinstance(identified, dict) else None
+    # identify: prefer NF via library helper path / nextfind identify
+    media = None
+    identify_path = "moviepilot"
+    try:
+        import media_mgmt_lib.ops.nextfind  # noqa: F401
+        from media_mgmt_lib.ops import call_op
+
+        if call_op("nextfind", "health", {}).get("success"):
+            idr = call_op(
+                "nextfind",
+                "identify",
+                {
+                    "title": title,
+                    "q": title,
+                    "tmdbid": tmdbid,
+                    "media_type": params.get("media_type") or params.get("mtype"),
+                    "year": params.get("year"),
+                    "select": params.get("select") or 1,
+                },
+            )
+            if idr.get("success") and isinstance(idr.get("selected"), dict):
+                media = idr["selected"]
+                identify_path = "nextfind_openapi"
+    except Exception:  # noqa: BLE001
+        pass
     if not isinstance(media, dict):
-        return fail("identify_failed", detail=identified)
+        identified = mp(
+            "identify",
+            title=title,
+            tmdbid=tmdbid,
+            media_type=params.get("media_type") or params.get("mtype"),
+            year=params.get("year"),
+        )
+        media = identified.get("selected") if isinstance(identified, dict) else None
+        identify_path = "moviepilot"
+    if not isinstance(media, dict):
+        return fail("identify_failed", detail="no selected media")
+
     title = media.get("title") or title
     tmdbid = media.get("tmdb_id") or media.get("tmdbid") or tmdbid
-    mtype = media.get("type") or params.get("media_type") or "电视剧"
+    mtype = media.get("type") or media.get("media_type") or params.get("media_type") or "电视剧"
 
-    # current library snapshot
     lib = w_library.run(
         {
             "title": title,
@@ -100,8 +120,9 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     plan: dict[str, Any] = {
         "prefer": prefer,
         "quality": qpref,
+        "identify_path": identify_path,
         "steps": [
-            "hdhive_115" if prefer in {"hdhive", "auto"} else "pt",
+            "nf_fill" if prefer in {"hdhive", "auto"} else "pt",
             "pt_fallback" if prefer in {"hdhive", "auto"} else None,
             "duplicates_compare",
         ],
@@ -110,49 +131,80 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     plan["steps"] = [s for s in plan["steps"] if s]
 
     actions: dict[str, Any] = {}
+    fill_result = None
     hdhive_result = None
     pt_result = None
     needs_confirm = False
     chosen_source = None
-    probe = str(params.get("probe") or "").lower() in {"1", "true", "yes"}
-    # dry_run without probe: only build plan (no HDHive browser / PT search) — fast & safe
-    live = execute or probe
 
-    # 1) HDHive first (user preference: 115 transfer)
+    # 1) NF fill (shared helper) — probe or execute
     if live and prefer in {"hdhive", "auto"}:
-        hdhive_params = {
-            "q": title,
+        from media_mgmt_lib.workflows.nf_fill import fill_missing
+
+        fill_params: dict[str, Any] = {
+            "title": title,
             "tmdbid": tmdbid,
             "media_type": mtype,
+            "season": season,
+            "episode": episode,
+            "dry_run": (not execute) or dry_run,
             "transfer": bool(execute),
+            "prefer": "auto" if prefer == "auto" else "netdisk",
             "resolution": qpref.get("resolution"),
             "require_chinese": qpref.get("require_chinese"),
             "hdr_mode": qpref.get("hdr_mode"),
+            "force_mp_search": params.get("force_mp_search"),
             "select": params.get("select") or 1,
         }
-        from media_mgmt_lib.ops import call_op
-        import media_mgmt_lib.ops.bootstrap  # noqa: F401
-
-        hdhive_result = call_op("hdhive", "grab", hdhive_params)
+        fill_result = fill_missing(fill_params)
+        actions["nf_fill"] = {
+            "success": fill_result.get("success"),
+            "path": fill_result.get("path"),
+            "error": fill_result.get("error"),
+            "stage": fill_result.get("stage"),
+            "steps": fill_result.get("steps"),
+            "best": fill_result.get("best") or fill_result.get("slug"),
+            "summary": fill_result.get("summary"),
+        }
+        # alias for older consumers
+        hdhive_result = {
+            "success": fill_result.get("success"),
+            "source": "nextfind_openapi" if fill_result.get("path") in {"netdisk", "nextfind_openapi"} else fill_result.get("path"),
+            "path": fill_result.get("path"),
+            "slug": (fill_result.get("best") or {}).get("slug") if isinstance(fill_result.get("best"), dict) else fill_result.get("slug"),
+            "detail": fill_result,
+        }
         actions["hdhive"] = hdhive_result
-        if hdhive_result.get("success"):
-            chosen_source = "hdhive_115"
+        if fill_result.get("success"):
+            path = str(fill_result.get("path") or "")
+            if path in {"netdisk", "nextfind_openapi"}:
+                chosen_source = "nextfind_openapi"
+            elif path in {"pt", "pt_from_nf", "moviepilot"}:
+                chosen_source = "pt" if execute else "pt_candidate"
+            else:
+                chosen_source = path or "nextfind_openapi"
         else:
-            plan["hdhive_fail"] = hdhive_result.get("error") or hdhive_result.get("detail")
+            plan["nf_fill_fail"] = fill_result.get("error") or fill_result.get("stage")
     elif not live and prefer in {"hdhive", "auto"}:
-        actions["hdhive"] = {
+        actions["nf_fill"] = {
             "skipped": True,
             "reason": "dry_run_no_probe",
-            "hint": "execute=true 才会 HDHive→115；probe=true 可在不下的情况下探测",
+            "hint": "execute=true 才会真转存；probe=true 可探测 fill 路径",
         }
+        actions["hdhive"] = actions["nf_fill"]
 
-    # 2) PT fallback / primary
+    # 2) PT fallback / primary (watch with skip netdisk)
     do_pt = prefer == "pt" or (
-        prefer in {"hdhive", "auto"} and (not hdhive_result or not hdhive_result.get("success"))
+        prefer in {"hdhive", "auto"}
+        and (not fill_result or not fill_result.get("success"))
     )
+    # If fill already chose pt path with success under dry, still report
+    if fill_result and fill_result.get("success") and str(fill_result.get("path") or "").startswith("pt"):
+        do_pt = False if execute else do_pt  # already handled by fill when execute+pt download
+
     if live and do_pt:
         search = mp("search", title=title, tmdbid=tmdbid)
-        items = []
+        items: list[Any] = []
         if isinstance(search, dict):
             for key in ("data", "results", "items"):
                 if isinstance(search.get(key), list):
@@ -212,20 +264,16 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
             "quality_filter": qpref,
         }
 
-    # if hdhive success and execute, transfer already attempted inside grab
-    if execute and prefer in {"hdhive", "auto"} and hdhive_result and hdhive_result.get("success"):
-        # re-run with transfer true already done when execute
-        if not hdhive_result.get("transfer") and hdhive_result.get("share_url"):
-            # unlock-only path: transfer now
-            tr = mp("transfer_share", share_url=hdhive_result.get("share_url"))
-            actions["transfer_share"] = tr
-            if tr.get("success") is not False:
-                chosen_source = "hdhive_115"
+    def _netdisk_ok(src: str | None) -> bool:
+        if not src:
+            return False
+        return src in {"hdhive_115", "nextfind_openapi"} or str(src).startswith("nextfind") or str(src).startswith("hdhive")
 
     summary_bits = [
         f"升级《{title}》",
         f"质量={qpref}",
         f"优先={prefer}",
+        f"identify={identify_path}",
     ]
     if chosen_source:
         summary_bits.append(f"命中源={chosen_source}")
@@ -236,16 +284,14 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
     else:
         summary_bits.append("已执行")
 
-    success = True
     if execute:
-        success = chosen_source in {"hdhive_115", "pt"} or bool(
-            (pt_result or {}).get("success") or (hdhive_result or {}).get("success")
+        success = (
+            _netdisk_ok(chosen_source)
+            or chosen_source == "pt"
+            or bool((pt_result or {}).get("success") or (fill_result or {}).get("success"))
         )
     else:
-        success = bool(
-            (hdhive_result and (hdhive_result.get("success") or hdhive_result.get("best_resource")))
-            or (actions.get("pt_pick") or {}).get("selected")
-        ) or True  # plan always returns success with empty candidates flagged
+        success = True
 
     return ok(
         {
@@ -257,8 +303,12 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
                 "type": mtype,
                 "year": media.get("year"),
             },
+            "identify_path": identify_path,
             "library": {
                 "exists": lib.get("exists"),
+                "authority": lib.get("authority"),
+                "exists_nf": lib.get("exists_nf"),
+                "has_transfer_record": lib.get("has_transfer_record"),
                 "summary": lib.get("summary"),
             },
             "duplicates": {
@@ -282,7 +332,8 @@ def run(params: dict[str, Any]) -> dict[str, Any]:
                     + f" --param hdr_mode={qpref.get('hdr_mode')}"
                     + (" --param require_chinese=true" if qpref.get("require_chinese") else "")
                 ),
-                "force_pt_pick": "run upgrade --param ... --param prefer=pt --param pick_index=N --param execute=true --param force=true",
+                "probe": "run upgrade --param title=… --param probe=true  # NF fill dry path",
+                "force_pt_pick": "run upgrade --param ... --param prefer=pt --param execute=true --param force=true",
                 "after": "run duplicates 对比新旧版本，确认后再删旧源",
             },
         }

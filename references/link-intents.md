@@ -85,13 +85,13 @@ douyin / hybrid **只有** 元数据 + 下载，**没有** 口播 ASR / 画面 O
 
 4. **校准名单**  
    - 模糊片名用搜索核实（例：口播「凤凰男」→《假如生活欺骗了你》）  
-   - 每部 `run identify`（带 `media_type`）拿 tmdb，再 `library` / `hdhive`  
+   - 每部 `run identify`（带 `media_type`）拿 tmdb，再 `library` / `nextfind`  
    - **禁止** 用错名候选当成功（例：潜伏→恋爱潜伏、蜗居→蜗居宅急变）
 
 5. **查库 / 转存 / 下载**  
    - 库里有的报已有  
-   - 缺的优先 `run hdhive ... transfer=true`  
-   - 影巢 `no_results` / `no_resources` → 问或按用户意图 `watch prefer=pt skip_hdhive`  
+   - 缺的优先 `run nextfind ... dry_run=true` 确认后再 transfer  
+   - NextFind `no_results` / `no_resources` → 问或按用户意图 `watch prefer=pt skip_hdhive`  
    - 老剧 PT 可能 `safety_confirmation_required`：用户明确要下后才 `force` + 合理 `pick_index`
 
 ### 不要做的事
@@ -115,7 +115,7 @@ python3 scripts/media_ctl.py run link --param url='https://v.douyin.com/...' --p
 # 3) 每部校准后查库/转存
 python3 scripts/media_ctl.py run identify --param title=片名 --param media_type=tv
 python3 scripts/media_ctl.py run library --param title=片名 --param tmdbid=ID --param media_type=tv
-python3 scripts/media_ctl.py run hdhive --param title=片名 --param tmdbid=ID --param media_type=tv --param transfer=true
+python3 scripts/media_ctl.py run nextfind --param title=片名 --param tmdbid=ID --param media_type=tv --param dry_run=true
 ```
 
 ## 红果短剧
@@ -150,5 +150,5 @@ python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_
 1. 提取 URL  
 2. 普通意图：`hybrid intent`（intent=用户原话）或上表选 op  
 3. 缺 id → 先 parse  
-4. **盘点/片单类** → 「内容抽取」：parse 穷尽 →（可选评论）→ 不够再下载+ASR/OCR → identify → library/hdhive/pt  
+4. **盘点/片单类** → 「内容抽取」：parse 穷尽 →（可选评论）→ 不够再下载+ASR/OCR → identify → library/nextfind/pt  
 5. 仍不够 → capabilities / raw api  

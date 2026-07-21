@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
-"""Compatibility CLI for the HDHive provider."""
+"""Deprecated Cloak HDHive CLI.
+
+Use NextFind OpenAPI via media_ctl instead:
+  python3 scripts/media_ctl.py run nextfind --param q=关键词 --param dry_run=true
+  python3 scripts/media_ctl.py call nextfind search --param q=关键词
+  python3 scripts/media_ctl.py call nextfind grab --param q=关键词 --param dry_run=true
+"""
+from __future__ import annotations
+
 import sys
-from pathlib import Path
 
-repo_root = Path(__file__).resolve().parents[1]
-repo_root_str = str(repo_root)
-if repo_root_str not in sys.path:
-    sys.path.insert(0, repo_root_str)
 
-from media_mgmt_lib.providers.hdhive.provider import main
+def main(argv: list[str] | None = None) -> int:
+    print(
+        "scripts/hdhive.py removed (Cloak path retired).\n"
+        "Use:\n"
+        "  python3 scripts/media_ctl.py run nextfind --param q=... --param dry_run=true\n"
+        "  python3 scripts/media_ctl.py call nextfind grab --param q=... --param dry_run=true\n"
+        "Alias: run hdhive / call hdhive (same NextFind OpenAPI).\n",
+        file=sys.stderr,
+    )
+    return 2
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

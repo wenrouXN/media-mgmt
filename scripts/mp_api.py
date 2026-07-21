@@ -329,13 +329,22 @@ def choose_download_path(media: dict[str, Any], paths: list[dict[str, Any]], cat
         if norm(item.get("media_type")) == media_type and norm(item.get("media_category")) == category:
             return {"save_path": item.get("save_path"), "media_type": media_type, "media_category": category, "source": "exact", "path_entry": item}
 
-    # 2. generic media_type path, with category appended as second-level dir when category exists.
+    # 2. generic media_type path + inferred category as second-level dir.
+    # When MP only configures base paths (e.g. 电影 → /qbs/torrents/movies/), append
+    # infer_category result (日韩电影/欧美电影/…) so layout matches library classification.
+    # Exact path entries (media_type + media_category) still win in step 1.
     for item in sorted(paths, key=lambda x: x.get("priority") if x.get("priority") is not None else 999):
         if norm(item.get("media_type")) == media_type and not norm(item.get("media_category")):
             base = str(item.get("save_path") or item.get("download_path") or "")
             if category and base and not base.rstrip("/").endswith(category):
                 base = base.rstrip("/") + "/" + category + "/"
-            return {"save_path": base, "media_type": media_type, "media_category": category, "source": "generic_plus_category", "path_entry": item}
+            return {
+                "save_path": base,
+                "media_type": media_type,
+                "media_category": category,
+                "source": "generic_plus_category",
+                "path_entry": item,
+            }
 
     # 3. no safe path
     return {"save_path": None, "media_type": media_type, "media_category": category, "source": "unresolved", "path_entry": None}

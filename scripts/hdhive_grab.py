@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Compatibility CLI for HDHive search → unlock → transfer."""
+"""Deprecated Cloak HDHive grab CLI — use NextFind OpenAPI."""
+from __future__ import annotations
+
 import sys
-from pathlib import Path
 
-repo_root = Path(__file__).resolve().parents[1]
-repo_root_str = str(repo_root)
-if repo_root_str not in sys.path:
-    sys.path.insert(0, repo_root_str)
 
-from media_mgmt_lib.providers.hdhive.grab import main
+def main(argv: list[str] | None = None) -> int:
+    print(
+        "scripts/hdhive_grab.py removed (Cloak path retired).\n"
+        "Use: python3 scripts/media_ctl.py run nextfind --param q=... --param dry_run=true\n",
+        file=sys.stderr,
+    )
+    return 2
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -15,7 +15,7 @@ def test_services_dir_has_core_services():
     for req in (
         "moviepilot",
         "hdhive",
-        "pansou",
+        "nextfind",
         "telegram_music",
         "douyin",
         "bilibili",
@@ -23,6 +23,8 @@ def test_services_dir_has_core_services():
         "clouddrive",
     ):
         assert req in ids
+    assert "pansou" not in ids
+    assert "cloakbrowser" not in ids
 
 
 def test_load_moviepilot_service_shape():

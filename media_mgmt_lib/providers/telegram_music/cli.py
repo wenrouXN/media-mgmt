@@ -79,7 +79,13 @@ def normalize_override_config(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def resolve_runtime_settings(args: argparse.Namespace) -> dict[str, Any]:
-    cfg = merge_config_sources(normalize_override_config(load_json_config(args.config)), load_default_config())
+    # Defaults may inject workspace credentials. Explicit --config file values must win
+    # over credentials for fields present in that file (load without inject).
+    defaults = load_default_config()
+    override: dict[str, Any] = {}
+    if args.config:
+        override = normalize_override_config(load_json_config(args.config, inject=False))
+    cfg = merge_config_sources(override, defaults)
     merged = merge_config_sources(
         {
             "bot": args.bot,

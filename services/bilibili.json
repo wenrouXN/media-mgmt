@@ -2,7 +2,7 @@
   "id": "bilibili",
   "name": "Bilibili (Douyin_TikTok_Download_API)",
   "kind": "content_api",
-  "description": "Bilibili via Douyin_TikTok_Download_API (default :7899) + provider download",
+  "description": "Bilibili via Douyin_TikTok_Download_API + provider download",
   "config_section": "bilibili",
   "required_config": [
     "api_base_url"

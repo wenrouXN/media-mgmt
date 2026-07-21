@@ -1,70 +1,78 @@
-# 网盘转存（NextFind OpenAPI）
+# 网盘转存（NextFind）
+
+产品说明与安装：[NextFind 介绍](https://wiki.nextemby.com/#/nextfind_intro)
 
 ## 何时用
 
-- 转存网盘 / 走 115 / 云盘看 / NextFind
-- 要 4K / STRM 网盘链路，而非本地 PT
+- 要走网盘 / 115 / 云盘观看链路（而非本地 PT 下载）
+- 查库是否已有、检索网盘资源并转存
 
-## 主入口
+## 凭据
+
+在 workspace `.credentials/nextfind.env` 中配置：
+
+- `NEXTFIND_BASE_URL`：你的 NextFind 访问地址  
+- `NEXTFIND_API_KEY`：Agent OpenAPI 密钥  
+
+详见 `INSTALL.md` 与 `references/credentials.md`。
+
+## 命令示例
 
 ```bash
-# search → resources → pick → transfer（干跑）
+# 干跑：search → 选源 → 预览转存
 python3 scripts/media_ctl.py run nextfind \
-  --param tmdbid=849869 \
-  --param title=格杀福顺 \
+  --param tmdbid=<TMDB_ID> \
+  --param title=<片名> \
   --param media_type=movie \
   --param dry_run=true
 
 # 真转存
 python3 scripts/media_ctl.py run nextfind \
-  --param tmdbid=849869 \
-  --param title=格杀福顺 \
+  --param tmdbid=<TMDB_ID> \
+  --param title=<片名> \
   --param media_type=movie \
   --param transfer=true
 
 # 分步
-python3 scripts/media_ctl.py call nextfind search --param q=格杀福顺
-python3 scripts/media_ctl.py call nextfind resources --param tmdbid=849869 --param media_type=movie
+python3 scripts/media_ctl.py call nextfind search --param q=<关键词>
+python3 scripts/media_ctl.py call nextfind resources --param tmdbid=<TMDB_ID> --param media_type=movie
 python3 scripts/media_ctl.py call nextfind transfer --param slug='...' --param dry_run=true
 ```
 
-`watch` 默认 `prefer=auto` 会先试 NextFind；**明确要网盘时用 `run nextfind`**，不要先 PT。
+`watch` 默认会先尝试 NextFind；**明确只要网盘时优先 `run nextfind`**，不要先走 PT。
 
-凭据：workspace `.credentials/nextfind.env`（`NEXTFIND_BASE_URL` + `NEXTFIND_API_KEY`）。
+## 如何判断成功
 
-## 成功判据
-
-1. `success=true` 且有 `slug`（或 `best_resource.slug`）
-2. 若 `transfer=true`：读 **`result.transfer.success=true`**（或 dry 的 `would_transfer`）
-3. 勿把顶层布尔 `transfer: true`（请求开关）当成转存结果对象
-4. `path/source=nextfind_openapi`
+1. 有资源标识：`slug`（或候选中的 slug）  
+2. 若请求了转存：看 **转存结果** 是否成功（例如结果对象里的 success）；**不要**把请求参数里的 `transfer=true` 当成「已经转存完成」  
+3. 干跑只有预览 / would_transfer，不代表文件已在盘上  
 
 ## 已有明文 115 分享（不找源）
 
 ```bash
-python3 scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=***'
+python3 scripts/media_ctl.py run share115 --param share_url='https://115.com/s/xxx?password=真实密码'
 ```
 
-走 MoviePilot P115StrmHelper；**禁止** `password=***`。
+经 MoviePilot 的 115 相关能力处理。请使用真实提取码，不要用 `***` 占位脱敏串。
 
-## 失败与回落
+## 失败时
 
-| 现象 | 含义 | 动作 |
-|------|------|------|
-| `nextfind_not_configured` | 无密钥/URL | 补 `.credentials/nextfind.env` |
-| `no_resources` / `no_search_results` | 无货 | `watch --prefer pt` 或 `skip_nextfind` |
-| NextFind 健康失败 | OpenAPI 宕 | 修 nextfind 服务（例 8092） |
-| 已有分享 `访问码错误` | 密码错/脱敏 | 重给明文 password |
-| watch 内网盘失败 | 自动继续 PT | 看 `report.nextfind` |
+| 情况 | 建议 |
+|------|------|
+| 未配置 / 鉴权失败 | 检查 `nextfind.env` 与 NextFind 是否开启 OpenAPI |
+| 无资源 | 换关键词/TMDB，或改走 `watch` 的 PT 路径 |
+| 服务不可达 | 按 [官方介绍](https://wiki.nextemby.com/#/nextfind_intro) 检查部署与地址 |
+| 115 访问码错误 | 使用明文正确密码重试 |
+| watch 网盘失败 | 默认会继续尝试 PT；可查看结果中的 nextfind 段 |
 
-## 硬规则
+## 与 watch 的参数
 
-1. **网盘找源 = NextFind only**
-2. 只 search 不算转存；必须 grab/transfer
-3. 已有明文 115 分享链 → `run share115`
+- `prefer=auto|nextfind|nf`：网盘成功则跳过 PT  
+- `prefer=pt` 或 `skip_nextfind=true`：不走网盘  
+- `nextfind_only=true`：只跑网盘段  
 
-## 与 watch 协同
+## 规则摘要
 
-- `prefer=auto|nextfind|nf`：网盘成功跳过 PT；失败继续 PT
-- `prefer=pt` / `skip_nextfind=true`：不走网盘
-- `nextfind_only=true`：只报网盘段
+1. 网盘找源与转存走 **NextFind**  
+2. 仅 search 不算转存完成  
+3. 已有明文 115 分享链用 `run share115`  

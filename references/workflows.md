@@ -16,7 +16,7 @@ python3 scripts/media_ctl.py run <name> --param key=value
 2. **参数尽量满**：`title` + 已知则 `tmdbid` + 有集则 `episode`/`season` + 已知则 `media_type=tv|movie`。
 3. **watch 同 tmdb 电影/剧**：TMDB 数字 id 可撞车；务必带用户标题；有集数会偏 TV。
 4. **诊断不下**：`updates`/`library`/`identify`/`dry_run=true`。真下须用户意图明确。
-5. **网盘**：`nextfind` + 尽量 `media_type`；先 `dry_run=true`；可转存以 **resources 有 slug** + **`result.transfer.success`** 为准。不要先 PT。
+5. **网盘**：`nextfind` + 尽量 `media_type`；先 `dry_run=true`；确认有资源并完成转存结果后再宣称成功。不要先 PT。
 6. **有没有**：`library` = NextFind only；MP 只 transfer/download 整理记录。
 
 ## 目录（21）
@@ -70,7 +70,7 @@ python3 scripts/media_ctl.py run <name> --param key=value
 ### 认片 / 有没有
 
 - 模糊片名先 `run identify`，确认 `tmdb_id` 再 search/watch
-- 有没有 → `run library`（`authority=nextfind`）；不要用 MP library_exists
+- 有没有 → `run library`（以 NextFind 为准）；不要用 MP library_exists 代替
 
 ### 订阅
 

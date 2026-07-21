@@ -2,7 +2,7 @@
   "id": "douyin",
   "name": "Douyin (Douyin_TikTok_Download_API)",
   "kind": "content_api",
-  "description": "Douyin via Douyin_TikTok_Download_API (default :7899); parse/download + full named ops + raw api",
+  "description": "Douyin via Douyin_TikTok_Download_API; parse/download + full named ops + raw api",
   "config_section": "douyin",
   "required_config": [
     "api_base_url"

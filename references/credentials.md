@@ -1,66 +1,62 @@
-# Credentials（共享密钥）
+# 凭据说明
 
 ## 原则
 
-- **密钥**放 workspace `.credentials/`，跨 skill/agent 复用
-- skill `config.json` 只放非密默认（路径、超时、bot 名、profile）
-- 禁止把 token / api_key / session 写进 git 或记忆层
+- **密钥**放在 OpenClaw workspace 的 `.credentials/` 目录，勿提交 Git  
+- skill 的 `config.json` 只放非密钥项（地址占位、超时、路径、bot 名等）  
+- 不要把 token / api_key / session 写进记忆或对外截图  
 
-## 文件（KEY=value，chmod 600）
+## 文件一览
 
-| 文件 | 用途 | 关键键 |
-|------|------|--------|
-| `moviepilot.env` | MoviePilot REST | `MOVIEPILOT_API_KEY`（兼 `API_KEY`）、可选 `MOVIEPILOT_BASE_URL` |
-| `clouddrive.env` | CloudDrive 离线 | `CLOUDDRIVE_TOKEN`（兼 `TOKEN`）、可选 URL/DEFAULT_FOLDER |
-| `telegram_music.env` | TG 音乐 | `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_SESSION_STRING` |
-| `hdhive.txt` | HDHive 登录（**checkin-manager 等**，非 media-mgmt 网盘） | `email` / `password` |
-| `nextfind.env` | NextFind OpenAPI（网盘找源/转存） | `NEXTFIND_API_KEY`、可选 `NEXTFIND_BASE_URL` |
+| 文件 | 用途 | 主要变量 |
+|------|------|----------|
+| `moviepilot.env` | MoviePilot REST | `MOVIEPILOT_BASE_URL`、`MOVIEPILOT_API_KEY` |
+| `nextfind.env` | NextFind OpenAPI | `NEXTFIND_BASE_URL`、`NEXTFIND_API_KEY` |
+| `clouddrive.env` | CloudDrive 离线 | `CLOUDDRIVE_URL`、`CLOUDDRIVE_TOKEN`、可选默认目录 |
+| `telegram_music.env` | Telegram 听歌 | `TELEGRAM_API_ID`、`TELEGRAM_API_HASH`、`TELEGRAM_SESSION_STRING` |
+| `hdhive.txt` | **其他 skill**（如签到）用的登录信息，**不是** media-mgmt 网盘后端 | 按对应 skill 说明 |
 
-路径解析顺序：
+路径查找顺序（由近到远）：
 
-1. `MEDIA_MGMT_CREDENTIALS_DIR` / `OPENCLAW_CREDENTIALS_DIR`
-2. skill 内 `.credentials/`
-3. 向上找 workspace `.credentials/`
-4. 本机 main workspace 固定路径
+1. 环境变量 `MEDIA_MGMT_CREDENTIALS_DIR` / `OPENCLAW_CREDENTIALS_DIR`  
+2. 本 skill 目录下的 `.credentials/`  
+3. 向上查找 workspace `.credentials/`  
 
-## 注入优先级（secret 字段）
+密钥字段优先级：进程环境变量 → 凭据文件 →（不推荐）config.json 遗留字段。
 
-1. 进程环境变量  
-2. `.credentials` 对应文件  
-3. skill `config.json` 遗留值（兼容，不推荐）
-
-`load_json_config()` 自动 `inject_secrets()`。
-
-## 示例
+## 示例模板（请改成你的地址与密钥）
 
 ```bash
-# workspace/.credentials/moviepilot.env
-MOVIEPILOT_BASE_URL=http://127.0.0.1:3002
-MOVIEPILOT_API_KEY=your-key
+# moviepilot.env
+MOVIEPILOT_BASE_URL=http://127.0.0.1:<MoviePilot端口>
+MOVIEPILOT_API_KEY=***
 
-# workspace/.credentials/clouddrive.env
-CLOUDDRIVE_URL=http://127.0.0.1:19798
-CLOUDDRIVE_TOKEN=your-api-token
-CLOUDDRIVE_DEFAULT_FOLDER=/115open/download/中转
+# nextfind.env
+NEXTFIND_BASE_URL=http://127.0.0.1:<NextFind地址>
+NEXTFIND_API_KEY=***
 
-# workspace/.credentials/telegram_music.env
-TELEGRAM_API_ID=123456
-TELEGRAM_API_HASH=...
-TELEGRAM_SESSION_STRING=...
+# clouddrive.env
+CLOUDDRIVE_URL=http://127.0.0.1:<CloudDrive端口>
+CLOUDDRIVE_TOKEN=***
+CLOUDDRIVE_DEFAULT_FOLDER=/path/you/use
 
-# workspace/.credentials/nextfind.env
-NEXTFIND_BASE_URL=http://127.0.0.1:8092
-NEXTFIND_API_KEY=your-openapi-key
+# telegram_music.env
+TELEGRAM_API_ID=***
+TELEGRAM_API_HASH=***
+TELEGRAM_SESSION_STRING=***
 ```
 
-## 运维
+NextFind 产品说明：[官方介绍](https://wiki.nextemby.com/#/nextfind_intro)
+
+## 权限与检查
 
 ```bash
-chmod 600 ~/.…/workspace/.credentials/*.env
-# 体检（密钥从 credentials 注入，config.json 可无 api_key）
+chmod 600 /path/to/workspace/.credentials/*.env
+
 python3 scripts/media_ctl.py call moviepilot health
-python3 scripts/media_ctl.py call clouddrive health
 python3 scripts/media_ctl.py call nextfind health
+# 若已配置：
+python3 scripts/media_ctl.py call clouddrive health
 ```
 
-实现：`media_mgmt_lib/credentials.py`。
+实现细节见 `media_mgmt_lib/credentials.py`。完整装机流程见 `INSTALL.md`。

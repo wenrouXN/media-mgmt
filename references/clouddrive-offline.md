@@ -17,7 +17,7 @@
 
 | 字段 | 说明 |
 |------|------|
-| `url` 或 `host`+`port` | CloudDrive gRPC，本机常见 `http://127.0.0.1:19798` |
+| `url` 或 `host`+`port` | CloudDrive gRPC 访问地址（以你的部署为准） |
 | `default_folder` | 默认离线目录 |
 | `save_paths` | 可选路径列表 |
 | `timeout` / `insecure` | 默认 30s / true |
@@ -25,7 +25,7 @@
 `.credentials/clouddrive.env` 示例：
 
 ```bash
-CLOUDDRIVE_URL=http://127.0.0.1:19798
+CLOUDDRIVE_URL=http://127.0.0.1:<CloudDrive端口>
 CLOUDDRIVE_TOKEN=your-api-token
 CLOUDDRIVE_DEFAULT_FOLDER=/115open/download/中转
 ```

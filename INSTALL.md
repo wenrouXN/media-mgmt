@@ -1,155 +1,205 @@
-# media-mgmt 安装手册
+# media-mgmt 安装说明
 
-面向：OpenClaw / 自托管环境。本 skill 是**媒体编排控制面**，不是「装完即用」的媒体中心。
+media-mgmt 是一个 **媒体编排 skill**：把「认片、查库、搜源、网盘转存、下载、订阅、短链、听歌」接到你自己已部署的服务上。  
+它 **不是** 一体机媒体中心，也 **不会** 替你安装 MoviePilot / NextFind 等上游软件。
 
-策略真源：`SKILL.md`。变更说明不维护独立 CHANGELOG。
+- 策略与意图路由：见 `SKILL.md`
+- 常用命令：见 `references/commands.md`
+- 本页只讲：**环境、依赖服务、配置、验收**
 
-## 1. 运行时
+---
 
-| 项 | 要求 |
-|----|------|
-| Python | 主机 `python3` ≥ 3.10 |
-| venv | **禁止** per-skill venv（与 OpenClaw 惯例一致） |
-| 依赖 | `pip install --user --break-system-packages -r requirements.txt` |
-| 工作目录 | skill 根目录执行 `scripts/media_ctl.py` |
+## 你需要准备什么
+
+### 影视主链路（推荐完整装齐）
+
+| 组件 | 作用 | 文档 / 获取 |
+|------|------|-------------|
+| **MoviePilot** | 搜索种子、下载、整理、订阅、115 分享转存等 | [GitHub](https://github.com/jxxghp/MoviePilot) · [安装 Wiki](https://wiki.movie-pilot.org/install) |
+| **NextFind** | 库内是否已有、网盘资源检索与转存（本 skill 的网盘主路径） | [NextFind 介绍](https://wiki.nextemby.com/#/nextfind_intro) |
+| **下载器** | qBittorrent 或 Transmission，在 MoviePilot 中配置 | [qBittorrent](https://github.com/qbittorrent/qBittorrent) · [Transmission](https://github.com/transmission/transmission) |
+| **媒体库 / 网盘** | 本地库或 115 等存储，按 MoviePilot / NextFind 各自文档配置 | 随你的存储方案 |
+
+最小可验收：MoviePilot + NextFind 均可访问，并已写入下方凭据。
+
+### 可选能力
+
+| 组件 | 作用 | 文档 / 获取 |
+|------|------|-------------|
+| **Douyin_TikTok_Download_API** | 抖音 / TikTok / B 站链接解析与下载 | [GitHub](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) |
+| **CloudDrive2** | 磁力 / 链接离线下载到网盘 | [官网下载](https://www.clouddrive2.com/download.html) · [Docker 镜像](https://hub.docker.com/r/cloudnas/clouddrive2) |
+| **Telegram 搜歌 Bot + Telethon** | 听歌搜索与下载 | [Telethon](https://github.com/LonamiWebs/Telethon) · API：[my.telegram.org](https://my.telegram.org) |
+| 歌单解析 / 红果短剧 | 直连公开页面，无需独立服务 | 见 `references/link-intents.md`、`references/commands.md` |
+
+上游版本、镜像名、端口以 **官方文档** 为准；请勿把他人环境的地址或端口当标准。
+
+---
+
+## 1. 安装本 skill 运行时
+
+要求：
+
+- Python 3.10+
+- 在 skill 根目录执行命令（或把该目录加入你的 OpenClaw skill 路径）
 
 ```bash
 cd /path/to/media-mgmt
 python3 -m pip install --user --break-system-packages -r requirements.txt
+```
+
+可选自检：
+
+```bash
 python3 -m pytest -q
 ```
 
-## 2. 后端矩阵（真实依赖）
+---
 
-### 2.1 影视主链路（必须 / 强烈）
+## 2. 配置凭据（密钥）
 
-| 层级 | 后端 | 本 skill 中的身份 | 典型配置 | 用途 |
-|------|------|-------------------|----------|------|
-| **必须** | **MoviePilot** REST | service `moviepilot` | `MOVIEPILOT_BASE_URL` + `MOVIEPILOT_API_KEY`（例 `http://127.0.0.1:3002`） | 认片回落、PT 搜种/下载、整理历史、active/cancel、115 分享转存插件 |
-| **必须** | **NextFind** Agent OpenAPI | service `nextfind` | `NEXTFIND_BASE_URL` + `NEXTFIND_API_KEY`（例 `http://127.0.0.1:8092`，prefix `/api/openapi`） | **库有没有（权威）**、网盘资源、unlock、transfer、订阅双写一侧 |
-| **强烈** | **qBittorrent / Transmission** | 经 MP；catalog 名 `qbittorrent`/`transmission` | 在 MoviePilot 里配置下载器（名如 `QB`/`TR`） | 实际 PT 下载；`call moviepilot active` |
-| **强烈** | 网盘存储 + MP 整理（如 115） | 无独立 service | MP 存储/整理设置 | 转存后落库；索引可能滞后于 transfer 记录 |
+密钥放在 **OpenClaw workspace** 的 `.credentials/` 下（不要提交到 Git）。细则见 `references/credentials.md`。
 
-### 2.2 短链 / 盘点（可选）
+### 2.1 影视必配
 
-| 后端 | service id | 配置段 | 说明 |
-|------|------------|--------|------|
-| **Douyin_TikTok_Download_API**（项目/进程名；本地 HTTP，默认端口 **7899**） | `douyin`、`tiktok`、`hybrid`、`bilibili` | `config.douyin.api_base_url`（bilibili 可单独 `config.bilibili.api_base_url`，默认同端口） | 抖音 / TikTok / B 站：`run link` → hybrid → 各平台 parse/download。**真实后端就是这套 API**，端口 7899 只是常见部署；**不是** NextFind / MoviePilot |
-| 红果短剧站点 SSR | `hongguo` | 可选 proxy/timeout/download_dir | 直连 `hongguoduanju.com` 等公开页，无 apikey |
-
-`hybrid` 与 `tiktok` 默认读 **同一** `douyin.api_base_url`（同一套 Douyin_TikTok_Download_API）。
-
-### 2.3 其它可选
-
-| 后端 | service id | 凭据 / 配置 | 用途 |
-|------|------------|-------------|------|
-| **CloudDrive2** gRPC | `clouddrive` | `CLOUDDRIVE_TOKEN` + URL（例 `19798`） | `run offline` 磁力/链接离线 |
-| **Telegram Music Bot**（Telethon） | `telegram_music` | `TELEGRAM_API_ID` / `HASH` / `SESSION_STRING` + bot 名 | `run listen` |
-| 公共歌单 HTTP | `playlist` | 无密钥；可选 proxy | 网易云/QQ/酷我/酷狗元数据 → listen queries |
-
-### 2.4 不在本 skill 网盘路径里的东西
-
-| 名称 | 说明 |
-|------|------|
-| 旧 Cloak 浏览器 HDHive 爬取 | **已删除**，无兼容入口 |
-| pansou 盘搜 | **已删除** |
-| `hdhive.txt` | 仅 **checkin-manager** 等站点登录用，**不是** media-mgmt 找源后端 |
-| NextFind 返回的 `hdhive://` slug、`/hdhive/unlock` | **上游 OpenAPI 路径/资源 ID 形态**，不是本仓库 CLI 别名 |
-
-
-## 2.5 上游开源地址 / 装机入口（本 skill 不打包这些服务）
-
-> media-mgmt **只编排**已运行的服务。下列为各后端的**公开装机指针**（以官方文档为准；版本随时间变，勿死抄镜像 tag）。
-
-| 后端 | 开源 / 官网 | 装机方式（摘要） | 本 skill 对接 |
-|------|-------------|------------------|---------------|
-| **MoviePilot** | [jxxghp/MoviePilot](https://github.com/jxxghp/MoviePilot) · [安装 Wiki](https://wiki.movie-pilot.org/install) | 推荐 Docker：`jxxghp/moviepilot-v2`（或 `jxxghp/moviepilot`）；Compose/环境变量见 Wiki。装好后取 **API Key** + 访问 URL | `moviepilot.env`：`MOVIEPILOT_BASE_URL` / `MOVIEPILOT_API_KEY` |
-| **NextFind** | 镜像常见 `fangzuming/nextfind`（本机示例 tag `v3.1.3`，端口 **8092**）。**未发现统一公开 GitHub 源码仓**；以你拿到的发行/镜像说明为准 | Docker Compose 起服务 → 在管理端开 **Agent OpenAPI** 并生成 API Key；API 前缀常为 `/api/openapi` | `nextfind.env`：`NEXTFIND_BASE_URL` / `NEXTFIND_API_KEY` |
-| **qBittorrent / Transmission** | [qbittorrent/qBittorrent](https://github.com/qbittorrent/qBittorrent) · [transmission/transmission](https://github.com/transmission/transmission) | 各自官方/Docker 部署后，在 **MoviePilot → 下载器** 登记（名如 `QB`/`TR`） | 不直连；经 MP `active`/`download`/`cancel` |
-| **Douyin_TikTok_Download_API** | [Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) · Docker Hub `evil0ctal/douyin_tiktok_download_api` | 官方 README：源码/install.sh / `docker pull` + run。默认文档里常映射 **80**；本机/skill 示例用 **7899** 时请自行 `-p 7899:80`（或改 config） | `config.douyin.api_base_url`（及 bilibili）；OpenAPI `/docs` |
-| **CloudDrive2** | 官网下载 [clouddrive2.com/download](https://www.clouddrive2.com/download.html) · Docker `cloudnas/clouddrive2`（[Hub](https://hub.docker.com/r/cloudnas/clouddrive2)） | **非本 skill 自维护开源仓**；Docker 需 FUSE/`privileged` 等，见镜像说明。Web 常见 **19798**，生成 API Token | `clouddrive.env`：`CLOUDDRIVE_URL` / `CLOUDDRIVE_TOKEN` |
-| **Telegram Music** | 客户端库 [LonamiWebs/Telethon](https://github.com/LonamiWebs/Telethon)；**音乐 Bot 本体**随你选用的第三方 bot | 在 [my.telegram.org](https://my.telegram.org) 申请 api_id/api_hash，导出 session；`bot` 填可用搜歌 bot | `telegram_music.env` + `config.telegram_music.bot` |
-| **playlist / hongguo** | 无独立后端 | playlist：直连网易云/QQ 等公开页；hongguo：公开 SSR 站 | 仅 timeout/proxy/download_dir 可选 |
-
-### 最小可跑影视栈（示意）
-
-1. 起 **MoviePilot** + 下载器（QB/TR）+ 媒体库/存储
-2. 起 **NextFind** 并配置 OpenAPI
-3. 填好两个 `.env` 后：`python3 scripts/media_ctl.py run doctor`
-4. 需要短链时再装 **Douyin_TikTok_Download_API** 并写 `api_base_url`
-
-### 注意
-
-- 本仓库 **不** 附带上述服务的 compose 生产模板（避免把个人路径/密钥写进 skill）。
-- 端口以你实际映射为准；`config.example.json` 里的 `3002`/`8092`/`7899`/`19798` 仅为常见本地示例。
-- NextFind 若你方有官方文档/源码链接，可替换上表「未发现统一公开源码仓」一行。
-
-## 3. 凭据
-
-密钥只放 workspace `.credentials/`（见 `references/credentials.md`）。
-
-**最小影视：**
+**MoviePilot** — 文件名：`moviepilot.env`
 
 ```bash
-# .credentials/moviepilot.env
-MOVIEPILOT_BASE_URL=http://127.0.0.1:3002
-MOVIEPILOT_API_KEY=***
-
-# .credentials/nextfind.env
-NEXTFIND_BASE_URL=http://127.0.0.1:8092
-NEXTFIND_API_KEY=***
+MOVIEPILOT_BASE_URL=http://127.0.0.1:<你的 MoviePilot 端口>
+MOVIEPILOT_API_KEY=<在 MoviePilot 中创建的 API Key>
 ```
 
-**短链（可选）：** 先部署 **Douyin_TikTok_Download_API**，再在 `config.json` 设 `douyin.api_base_url`（及可选 bilibili，默认 `http://127.0.0.1:7899`）。
+**NextFind** — 文件名：`nextfind.env`
 
-**CloudDrive / 音乐（可选）：** `clouddrive.env`、`telegram_music.env`。
+```bash
+NEXTFIND_BASE_URL=http://127.0.0.1:<你的 NextFind 访问地址>
+NEXTFIND_API_KEY=<在 NextFind 中启用 Agent OpenAPI 后生成的 Key>
+```
+
+安装与能力说明以官方为准：  
+[NextFind 介绍](https://wiki.nextemby.com/#/nextfind_intro)
+
+权限建议：
 
 ```bash
 chmod 600 /path/to/workspace/.credentials/*.env
 ```
 
-## 4. 非密配置
+### 2.2 可选凭据
+
+| 文件 | 何时需要 |
+|------|----------|
+| `clouddrive.env`（`CLOUDDRIVE_URL` + `CLOUDDRIVE_TOKEN`） | 使用 `run offline` |
+| `telegram_music.env`（API ID / Hash / Session 等） | 使用 `run listen` |
+
+---
+
+## 3. 非密钥配置
 
 ```bash
-cp config.example.json config.json   # config.json 已 gitignore
-# 按本机改端口与路径；勿写 api_key
+cp config.example.json config.json
 ```
 
-## 5. 验证
+按本机修改服务地址与下载目录。`config.json` 已在 `.gitignore` 中，**不要** 写入 API Key / Token / Session。
+
+短链能力示例字段：
+
+- `douyin.api_base_url`：Douyin_TikTok_Download_API 的根地址  
+- `bilibili.api_base_url`：通常与上面同一实例  
+
+CloudDrive / 听歌等见 `config.example.json` 内注释字段。
+
+---
+
+## 4. 建议部署顺序
+
+1. 安装并启动 **MoviePilot**，配置下载器与媒体库。  
+2. 按 [NextFind 介绍](https://wiki.nextemby.com/#/nextfind_intro) 安装 **NextFind**，开启 Agent OpenAPI，记下 Base URL 与 API Key。  
+3. 写入 `moviepilot.env`、`nextfind.env`。  
+4. 安装本 skill 依赖（第 1 节）。  
+5. 执行第 5 节验收。  
+6. 如需短链 / 离线 / 听歌，再装对应可选服务并补配置。
+
+---
+
+## 5. 验收
+
+在 skill 根目录：
 
 ```bash
+# 服务连通性
 python3 scripts/media_ctl.py run doctor
-# 期望：moviepilot / nextfind 等核心 ok；未装的可选服务可 degraded
 
+# 分别探活（可选）
 python3 scripts/media_ctl.py call nextfind health
 python3 scripts/media_ctl.py call moviepilot clients
-
-# 短链（需 Douyin_TikTok_Download_API 已起）
-python3 scripts/media_ctl.py call hybrid parse --param url='https://v.douyin.com/...'
-
-# 网盘干跑
-python3 scripts/media_ctl.py run nextfind \
-  --param tmdbid=ID --param title=片名 --param media_type=movie --param dry_run=true
 ```
 
-### 成功判据（防假绿）
+网盘干跑（不会真转存）：
 
-| 动作 | 至少读 |
-|------|--------|
-| 任意 run/call | 业务字段 + `error`/`warnings`，勿只看 `success` |
-| 库有没有 | `authority=nextfind` + `exists` |
-| 转存 | `slug` + **`result.transfer.success`**（顶层 `transfer` 可能只是请求开关布尔） |
-| dry_run | `would_transfer` ≠ 已落盘 |
+```bash
+python3 scripts/media_ctl.py run nextfind \
+  --param tmdbid=<TMDB数字ID> \
+  --param title=<片名> \
+  --param media_type=movie \
+  --param dry_run=true
+```
 
-## 6. Agent / CLI 入口
+短链（需已部署 Douyin_TikTok_Download_API）：
+
+```bash
+python3 scripts/media_ctl.py call hybrid parse --param url='https://v.douyin.com/...'
+```
+
+### 如何判断成功
+
+| 你在做 | 应看到 |
+|--------|--------|
+| 查库 | 结果标明以 NextFind 为准，并给出是否在库 |
+| 转存 | 有资源标识（slug），且 **转存结果对象** 表示成功；不要把请求参数里的 `transfer=true` 当成「已转存」 |
+| 干跑 | 仅预览/would_transfer，不代表文件已落盘 |
+| 体检 | 已配置的服务为健康；未安装的可选服务可降级，不影响主链路 |
+
+更多网盘说明：`references/nextfind-115.md`。
+
+---
+
+## 6. 日常怎么用
 
 | 入口 | 用途 |
 |------|------|
-| `SKILL.md` | 意图 → 唯一 workflow、硬规则 |
-| `python3 scripts/media_ctl.py run <workflow>` | 固定剧本 |
-| `python3 scripts/media_ctl.py call <service> <op>` | 单服务 op |
-| `references/workflows.md` | 剧本参数 |
-| `references/nextfind-115.md` | NextFind 转存 + 明文 115 分享 |
-| `references/link-intents.md` | 短链/盘点 |
+| 对话 + OpenClaw 加载本 skill | 自然语言（「有没有 XX」「转存到网盘」等） |
+| `python3 scripts/media_ctl.py run <工作流>` | 固定剧本（watch / nextfind / library …） |
+| `python3 scripts/media_ctl.py call <服务> <操作>` | 单服务调用 |
+| `references/workflows.md` | 各工作流参数 |
+| `references/nextfind-115.md` | 网盘转存与 115 分享 |
+| `references/link-intents.md` | 短链与盘点 |
 
-网盘找源/转存：**只** `run nextfind` / `call nextfind *`。无 `run hdhive`。
+网盘找源与转存请使用 **`run nextfind` / `call nextfind …`**，不要走已移除的旧路径。
+
+---
+
+## 7. 常见问题
+
+**Q：只装了 MoviePilot 行不行？**  
+A：可以搜种下载，但「库里有没有」、网盘转存等以 NextFind 为权威的能力会不可用或不完整。
+
+**Q：NextFind 装在哪、端口多少？**  
+A：以 [官方介绍](https://wiki.nextemby.com/#/nextfind_intro) 与你的部署为准；把实际 Base URL 与 Key 写入 `nextfind.env` 即可。
+
+**Q：短链解析失败？**  
+A：确认 Douyin_TikTok_Download_API 已启动，且 `config.json` 中 `api_base_url` 指向正确地址；浏览器可先打开该服务的 `/docs`。
+
+**Q：密钥写进 config.json 了？**  
+A：请移到 `.credentials/*.env` 并轮换已泄露的密钥。
+
+**Q：和 moviepilot-cli / moviepilot-api 什么关系？**  
+A：本 skill 做跨服务编排；需要直接调 MoviePilot 裸 API 时用那些 skill，不要在对话里手搓未声明参数。
+
+---
+
+## 8. 安全与范围
+
+- 仓库 **不包含** 账号、Cookie、媒体文件。  
+- 不要在 Issue / 截图中暴露你的 API Key、内网地址与路径。  
+- 本仓库 **不提供** 上游服务的生产 Compose 模板，避免把环境细节写进 skill。  
+- 遵守各上游项目的许可证与使用条款。

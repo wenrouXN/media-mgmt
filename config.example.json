@@ -1,11 +1,11 @@
 {
-  "_comment": "Secrets live in workspace .credentials/*.env (see references/credentials.md). Do not put api_key/token/session here.",
+  "_comment": "Copy to config.json (gitignored). Put secrets in workspace .credentials/*.env — see references/credentials.md and INSTALL.md.",
   "moviepilot": {
-    "base_url": "http://127.0.0.1:3002",
+    "base_url": "http://127.0.0.1:3000",
     "mcporter_server": "moviepilot"
   },
   "nextfind": {
-    "base_url": "http://127.0.0.1:8092",
+    "base_url": "http://127.0.0.1:PORT",
     "prefix": "/api/openapi",
     "timeout": 45
   },
@@ -18,14 +18,14 @@
     "poll_interval": 1
   },
   "douyin": {
-    "_comment": "Douyin_TikTok_Download_API base URL (default port 7899)",
-    "api_base_url": "http://127.0.0.1:7899",
+    "_comment": "Douyin_TikTok_Download_API root URL (see project README for port mapping)",
+    "api_base_url": "http://127.0.0.1:PORT",
     "download_dir": "./downloads/douyin",
     "timeout": 60
   },
   "bilibili": {
-    "_comment": "Usually same Douyin_TikTok_Download_API instance",
-    "api_base_url": "http://127.0.0.1:7899",
+    "_comment": "Usually the same Douyin_TikTok_Download_API instance",
+    "api_base_url": "http://127.0.0.1:PORT",
     "download_dir": "./downloads/bilibili",
     "quality": 80,
     "timeout": 120
@@ -41,7 +41,7 @@
     "download_dir": "./downloads/hongguo"
   },
   "clouddrive": {
-    "url": "http://127.0.0.1:19798",
+    "url": "http://127.0.0.1:PORT",
     "default_folder": "/cloud/download/staging",
     "timeout": 30,
     "insecure": true,
@@ -49,12 +49,12 @@
       {
         "path": "/cloud/download/staging",
         "label": "staging",
-        "aliases": ["staging", "download", "default", "中转"]
+        "aliases": ["staging", "download", "default"]
       },
       {
         "path": "/cloud/download/other",
         "label": "other",
-        "aliases": ["other", "else", "其他"]
+        "aliases": ["other"]
       }
     ]
   }

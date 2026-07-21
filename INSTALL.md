@@ -56,6 +56,34 @@ python3 -m pytest -q
 | `hdhive.txt` | 仅 **checkin-manager** 等站点登录用，**不是** media-mgmt 找源后端 |
 | NextFind 返回的 `hdhive://` slug、`/hdhive/unlock` | **上游 OpenAPI 路径/资源 ID 形态**，不是本仓库 CLI 别名 |
 
+
+## 2.5 上游开源地址 / 装机入口（本 skill 不打包这些服务）
+
+> media-mgmt **只编排**已运行的服务。下列为各后端的**公开装机指针**（以官方文档为准；版本随时间变，勿死抄镜像 tag）。
+
+| 后端 | 开源 / 官网 | 装机方式（摘要） | 本 skill 对接 |
+|------|-------------|------------------|---------------|
+| **MoviePilot** | [jxxghp/MoviePilot](https://github.com/jxxghp/MoviePilot) · [安装 Wiki](https://wiki.movie-pilot.org/install) | 推荐 Docker：`jxxghp/moviepilot-v2`（或 `jxxghp/moviepilot`）；Compose/环境变量见 Wiki。装好后取 **API Key** + 访问 URL | `moviepilot.env`：`MOVIEPILOT_BASE_URL` / `MOVIEPILOT_API_KEY` |
+| **NextFind** | 镜像常见 `fangzuming/nextfind`（本机示例 tag `v3.1.3`，端口 **8092**）。**未发现统一公开 GitHub 源码仓**；以你拿到的发行/镜像说明为准 | Docker Compose 起服务 → 在管理端开 **Agent OpenAPI** 并生成 API Key；API 前缀常为 `/api/openapi` | `nextfind.env`：`NEXTFIND_BASE_URL` / `NEXTFIND_API_KEY` |
+| **qBittorrent / Transmission** | [qbittorrent/qBittorrent](https://github.com/qbittorrent/qBittorrent) · [transmission/transmission](https://github.com/transmission/transmission) | 各自官方/Docker 部署后，在 **MoviePilot → 下载器** 登记（名如 `QB`/`TR`） | 不直连；经 MP `active`/`download`/`cancel` |
+| **Douyin_TikTok_Download_API** | [Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) · Docker Hub `evil0ctal/douyin_tiktok_download_api` | 官方 README：源码/install.sh / `docker pull` + run。默认文档里常映射 **80**；本机/skill 示例用 **7899** 时请自行 `-p 7899:80`（或改 config） | `config.douyin.api_base_url`（及 bilibili）；OpenAPI `/docs` |
+| **CloudDrive2** | 官网下载 [clouddrive2.com/download](https://www.clouddrive2.com/download.html) · Docker `cloudnas/clouddrive2`（[Hub](https://hub.docker.com/r/cloudnas/clouddrive2)） | **非本 skill 自维护开源仓**；Docker 需 FUSE/`privileged` 等，见镜像说明。Web 常见 **19798**，生成 API Token | `clouddrive.env`：`CLOUDDRIVE_URL` / `CLOUDDRIVE_TOKEN` |
+| **Telegram Music** | 客户端库 [LonamiWebs/Telethon](https://github.com/LonamiWebs/Telethon)；**音乐 Bot 本体**随你选用的第三方 bot | 在 [my.telegram.org](https://my.telegram.org) 申请 api_id/api_hash，导出 session；`bot` 填可用搜歌 bot | `telegram_music.env` + `config.telegram_music.bot` |
+| **playlist / hongguo** | 无独立后端 | playlist：直连网易云/QQ 等公开页；hongguo：公开 SSR 站 | 仅 timeout/proxy/download_dir 可选 |
+
+### 最小可跑影视栈（示意）
+
+1. 起 **MoviePilot** + 下载器（QB/TR）+ 媒体库/存储
+2. 起 **NextFind** 并配置 OpenAPI
+3. 填好两个 `.env` 后：`python3 scripts/media_ctl.py run doctor`
+4. 需要短链时再装 **Douyin_TikTok_Download_API** 并写 `api_base_url`
+
+### 注意
+
+- 本仓库 **不** 附带上述服务的 compose 生产模板（避免把个人路径/密钥写进 skill）。
+- 端口以你实际映射为准；`config.example.json` 里的 `3002`/`8092`/`7899`/`19798` 仅为常见本地示例。
+- NextFind 若你方有官方文档/源码链接，可替换上表「未发现统一公开源码仓」一行。
+
 ## 3. 凭据
 
 密钥只放 workspace `.credentials/`（见 `references/credentials.md`）。

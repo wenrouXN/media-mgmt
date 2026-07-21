@@ -26,7 +26,7 @@ python3 -m pytest -q
 
 | 需要 | 读 |
 |------|-----|
-| 装机与后端 | `INSTALL.md` |
+| 装机与后端 / 上游地址 | `INSTALL.md`（含 §2.5 开源与装机入口） |
 | 意图路由 / 硬规则 | `SKILL.md` |
 | 剧本参数 | `references/workflows.md` |
 | CLI | `references/commands.md` |

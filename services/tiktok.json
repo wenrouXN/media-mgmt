@@ -1,8 +1,8 @@
 {
   "id": "tiktok",
-  "name": "TikTok (7899 API)",
+  "name": "TikTok (Douyin_TikTok_Download_API)",
   "kind": "content_api",
-  "description": "TikTok endpoints on same 7899 service",
+  "description": "TikTok endpoints on Douyin_TikTok_Download_API (same host as douyin/hybrid, default :7899)",
   "config_section": "douyin",
   "required_config": [
     "api_base_url"

@@ -18,11 +18,13 @@
     "poll_interval": 1
   },
   "douyin": {
+    "_comment": "Douyin_TikTok_Download_API base URL (default port 7899)",
     "api_base_url": "http://127.0.0.1:7899",
     "download_dir": "./downloads/douyin",
     "timeout": 60
   },
   "bilibili": {
+    "_comment": "Usually same Douyin_TikTok_Download_API instance",
     "api_base_url": "http://127.0.0.1:7899",
     "download_dir": "./downloads/bilibili",
     "quality": 80,

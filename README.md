@@ -3,7 +3,7 @@
 **Status:** production OpenClaw skill · self-hosted  
 默认中文｜[English](README.en.md)
 
-跨服务**媒体编排**：认片、缺集、NextFind 网盘转存、PT 下载、短链盘点、歌单。  
+跨服务**媒体编排**：认片、缺集、NextFind 网盘转存、PT 下载、短链盘点（**Douyin_TikTok_Download_API**）、歌单。  
 **Agent 策略真源：`SKILL.md`**。控制面：`python3 scripts/media_ctl.py run|call|workflows|list`。
 
 > 编排器，不是装完即用的媒体中心。  

@@ -34,10 +34,10 @@ python3 -m pytest -q
 
 | 后端 | service id | 配置段 | 说明 |
 |------|------------|--------|------|
-| **Douyin_TikTok_Download_API**（本地 HTTP，常见端口 **7899**） | `douyin`、`tiktok`、`hybrid`、`bilibili` | `config.douyin.api_base_url`（bilibili 可单独 `config.bilibili.api_base_url`，默认同 7899） | 抖音 / TikTok / B 站链接：`run link` → hybrid 路由 → 各平台 parse/download。**不是** NextFind，也不是 MoviePilot |
+| **Douyin_TikTok_Download_API**（项目/进程名；本地 HTTP，默认端口 **7899**） | `douyin`、`tiktok`、`hybrid`、`bilibili` | `config.douyin.api_base_url`（bilibili 可单独 `config.bilibili.api_base_url`，默认同端口） | 抖音 / TikTok / B 站：`run link` → hybrid → 各平台 parse/download。**真实后端就是这套 API**，端口 7899 只是常见部署；**不是** NextFind / MoviePilot |
 | 红果短剧站点 SSR | `hongguo` | 可选 proxy/timeout/download_dir | 直连 `hongguoduanju.com` 等公开页，无 apikey |
 
-`hybrid` 与 `tiktok` 默认读 **同一** `douyin.api_base_url`（7899 一体服务）。
+`hybrid` 与 `tiktok` 默认读 **同一** `douyin.api_base_url`（同一套 Douyin_TikTok_Download_API）。
 
 ### 2.3 其它可选
 
@@ -72,7 +72,7 @@ NEXTFIND_BASE_URL=http://127.0.0.1:8092
 NEXTFIND_API_KEY=***
 ```
 
-**短链（可选）：** `config.json` 里设 `douyin.api_base_url`（及可选 bilibili），确保 7899 服务已启动。
+**短链（可选）：** 先部署 **Douyin_TikTok_Download_API**，再在 `config.json` 设 `douyin.api_base_url`（及可选 bilibili，默认 `http://127.0.0.1:7899`）。
 
 **CloudDrive / 音乐（可选）：** `clouddrive.env`、`telegram_music.env`。
 
@@ -96,7 +96,7 @@ python3 scripts/media_ctl.py run doctor
 python3 scripts/media_ctl.py call nextfind health
 python3 scripts/media_ctl.py call moviepilot clients
 
-# 短链（需 7899）
+# 短链（需 Douyin_TikTok_Download_API 已起）
 python3 scripts/media_ctl.py call hybrid parse --param url='https://v.douyin.com/...'
 
 # 网盘干跑

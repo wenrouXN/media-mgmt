@@ -1,8 +1,8 @@
 {
   "id": "hybrid",
-  "name": "Hybrid link router (7899)",
+  "name": "Hybrid link router (Douyin_TikTok_Download_API)",
   "kind": "content_api",
-  "description": "One entry for douyin/tiktok/bilibili links: intent/parse/download + raw api",
+  "description": "One entry for douyin/tiktok/bilibili via Douyin_TikTok_Download_API (default :7899): intent/parse/download + raw api",
   "config_section": "douyin",
   "required_config": [
     "api_base_url"

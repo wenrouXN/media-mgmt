@@ -138,7 +138,7 @@ python3 scripts/bilibili.py download "https://www.bilibili.com/video/BVxxx" --qu
 python3 scripts/hongguo.py download 'https://novelquickapp.com/s/xxx' --episode 1
 ```
 
-- 抖音/TikTok/B站依赖 7899 API（默认 `http://localhost:7899`）
+- 抖音/TikTok/B站依赖 **Douyin_TikTok_Download_API**（默认 `http://localhost:7899`，OpenAPI `/docs`）
 - B站 DASH 合并需要 ffmpeg；Referer `https://www.bilibili.com`
 - 红果默认目录见 config `hongguo.download_dir`；意图表 → `link-intents.md`
 

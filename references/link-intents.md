@@ -40,9 +40,9 @@ python3 scripts/media_ctl.py call hybrid capabilities
 
 ## 内容抽取（盘点 / 片单）
 
-### API 天花板（实测，douyin_tiktok_api / hybrid）
+### API 天花板（实测，Douyin_TikTok_Download_API / hybrid）
 
-douyin / hybrid **只有** 元数据 + 下载，**没有** 口播 ASR / 画面 OCR / 「盘点片单」专用接口。
+真实后端：**Douyin_TikTok_Download_API**（默认端口 7899）。douyin / hybrid **只有** 元数据 + 下载，**没有** 口播 ASR / 画面 OCR / 「盘点片单」专用接口。
 
 | 字段 | 常见内容 | 能否当全片单 |
 |------|----------|--------------|
@@ -140,7 +140,7 @@ python3 scripts/media_ctl.py call douyin capabilities
 python3 scripts/media_ctl.py call bilibili capabilities
 python3 scripts/media_ctl.py call hongguo capabilities
 python3 scripts/media_ctl.py ops douyin
-# OpenAPI: http://localhost:7899/docs
+# Douyin_TikTok_Download_API OpenAPI: http://localhost:7899/docs
 python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_user_post_videos --param sec_user_id=...
 python3 scripts/media_ctl.py call douyin api --param path=/api/douyin/web/fetch_one_video --param aweme_id=...
 ```
